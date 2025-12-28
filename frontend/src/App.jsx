@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { AlertCircle, CheckCircle, Upload, RefreshCw } from 'lucide-react';
 
 const CHUNK_SIZE = 2048; // 2KB chunks for demo
-const API_URL = 'http://localhost:3001';
+const API_URL = window.location.origin.includes('localhost') 
+  ? 'http://localhost:3001' 
+  : 'https://comms-via-chunks.onrender.com'; // Replace with your actual backend URL
 
 // Utility functions for chunking
 const chunkString = (str, size) => {
