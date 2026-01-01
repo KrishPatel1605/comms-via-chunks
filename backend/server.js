@@ -1,24 +1,32 @@
-// Backend Server - Node.js + Express
-// Save as: server.js
-// Install: npm install express cors body-parser
+// Backend Server - Node.js + Express + Cloudinary
+// Install: npm install express cors body-parser cloudinary dotenv
 
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
-const crypto = require('crypto');
+const cloudinary = require('cloudinary').v2;
+require('dotenv').config();
 
 const app = express();
 const PORT = 3001;
 
 // Middleware
 app.use(cors());
-app.use(bodyParser.json({ limit: '50mb' }));
+// Increased limit to 50mb to handle large Base64 chunks if needed
+app.use(bodyParser.json({ limit: '50mb' })); 
+
+// ==================== CLOUDINARY CONFIG ====================
+// Note: If these are not set, the app will fall back to storing 
+// the Base64 string directly in memory so the demo still works.
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
+});
 
 // ==================== STORAGE ====================
-// Temporary chunk storage (in-memory buffer)
 const chunkStorage = new Map();
 
-// Central database simulation (single centralized storage)
 const centralDatabase = {
   latestSliderValue: null,
   history: []
@@ -26,7 +34,6 @@ const centralDatabase = {
 
 // ==================== CHUNK MANAGEMENT ====================
 
-// Store a chunk temporarily
 function storeChunk(uploadId, chunkIndex, payload, totalChunks) {
   if (!chunkStorage.has(uploadId)) {
     chunkStorage.set(uploadId, {
@@ -39,7 +46,6 @@ function storeChunk(uploadId, chunkIndex, payload, totalChunks) {
 
   const upload = chunkStorage.get(uploadId);
   
-  // Avoid duplicate chunks
   if (!upload.chunks.has(chunkIndex)) {
     upload.chunks.set(chunkIndex, payload);
     upload.receivedCount++;
@@ -52,139 +58,94 @@ function storeChunk(uploadId, chunkIndex, payload, totalChunks) {
   };
 }
 
-// Reconstruct JSON from chunks
 function reconstructJSON(uploadId) {
   const upload = chunkStorage.get(uploadId);
   
-  if (!upload) {
-    throw new Error('Upload not found');
+  if (!upload || upload.receivedCount !== upload.totalChunks) {
+    throw new Error('Upload incomplete or not found');
   }
 
-  if (upload.receivedCount !== upload.totalChunks) {
-    throw new Error('Not all chunks received');
-  }
-
-  // Sort chunks by index
   const sortedChunks = Array.from(upload.chunks.entries())
     .sort((a, b) => a[0] - b[0])
     .map(([_, payload]) => payload);
 
-  // Concatenate payloads
   const fullString = sortedChunks.join('');
 
-  // Parse back to JSON
   try {
-    const jsonObject = JSON.parse(fullString);
-    return jsonObject;
+    return JSON.parse(fullString);
   } catch (error) {
-    throw new Error('Failed to parse reconstructed JSON: ' + error.message);
+    throw new Error('Failed to parse reconstructed JSON');
   }
-}
-
-// Clean up temporary chunks
-function cleanupChunks(uploadId) {
-  chunkStorage.delete(uploadId);
-}
-
-// Get received chunk indices
-function getReceivedChunks(uploadId) {
-  const upload = chunkStorage.get(uploadId);
-  if (!upload) {
-    return [];
-  }
-  return Array.from(upload.chunks.keys()).sort((a, b) => a - b);
-}
-
-// ==================== VALIDATION ====================
-
-function validateChunk(chunkPacket) {
-  const required = ['uploadId', 'chunkIndex', 'totalChunks', 'payload'];
-  for (const field of required) {
-    if (!(field in chunkPacket)) {
-      return { valid: false, error: `Missing required field: ${field}` };
-    }
-  }
-
-  if (typeof chunkPacket.chunkIndex !== 'number' || chunkPacket.chunkIndex < 0) {
-    return { valid: false, error: 'Invalid chunkIndex' };
-  }
-
-  if (typeof chunkPacket.totalChunks !== 'number' || chunkPacket.totalChunks <= 0) {
-    return { valid: false, error: 'Invalid totalChunks' };
-  }
-
-  if (chunkPacket.chunkIndex >= chunkPacket.totalChunks) {
-    return { valid: false, error: 'chunkIndex exceeds totalChunks' };
-  }
-
-  return { valid: true };
 }
 
 // ==================== API ENDPOINTS ====================
 
-// Endpoint 1: Receive chunk
-app.post('/upload-chunk', (req, res) => {
-  const chunkPacket = req.body;
+app.post('/upload-chunk', async (req, res) => {
+  const { uploadId, chunkIndex, totalChunks, payload } = req.body;
 
-  // Validate chunk packet
-  const validation = validateChunk(chunkPacket);
-  if (!validation.valid) {
-    return res.status(400).json({ error: validation.error });
+  if (!uploadId || chunkIndex === undefined || !payload) {
+    return res.status(400).json({ error: 'Invalid payload' });
   }
 
-  const { uploadId, chunkIndex, totalChunks, payload } = chunkPacket;
-
-  console.log(`Received chunk ${chunkIndex}/${totalChunks - 1} for upload ${uploadId}`);
+  console.log(`Received chunk ${chunkIndex}/${totalChunks - 1} for ${uploadId}`);
 
   try {
-    // Store chunk temporarily
     const status = storeChunk(uploadId, chunkIndex, payload, totalChunks);
 
-    // Check if upload is complete
     if (status.complete) {
-      console.log(`Upload ${uploadId} complete, reconstructing...`);
+      console.log(`Upload ${uploadId} complete. Reconstructing...`);
+      
+      let reconstructedData = reconstructJSON(uploadId);
+      
+      // ==================== IMAGE PROCESSING ====================
+      // Check if payload contains an image to upload to Cloudinary
+      if (reconstructedData.imageBase64) {
+        console.log('Image detected. Attempting Cloudinary upload...');
+        
+        try {
+          // Check if Cloudinary is actually configured
+          if (!process.env.CLOUDINARY_CLOUD_NAME) {
+            throw new Error("Cloudinary not configured");
+          }
 
-      // Reconstruct JSON
-      const reconstructedData = reconstructJSON(uploadId);
+          const uploadResponse = await cloudinary.uploader.upload(reconstructedData.imageBase64, {
+            folder: "site_engineer_updates",
+            resource_type: "auto"
+          });
+          
+          console.log(`Cloudinary Upload Success: ${uploadResponse.secure_url}`);
+          reconstructedData.imageUrl = uploadResponse.secure_url;
 
-      // Validate integrity (optional checksum verification)
-      console.log('Reconstructed data:', reconstructedData);
+        } catch (cloudError) {
+          console.warn(`Cloudinary upload skipped/failed (${cloudError.message}). Using Base64 fallback.`);
+          // Fallback: Use the raw base64 string as the image URL
+          // This ensures the demo works even without API keys
+          reconstructedData.imageUrl = reconstructedData.imageBase64;
+        }
 
-      // Commit to central database ONLY after full reconstruction
-      if (reconstructedData.sliderValue !== undefined) {
-        centralDatabase.latestSliderValue = {
-          sliderValue: reconstructedData.sliderValue,
-          timestamp: reconstructedData.timestamp,
-          source: reconstructedData.source,
-          uploadId: uploadId
-        };
-
-        centralDatabase.history.push({
-          ...centralDatabase.latestSliderValue,
-          committedAt: new Date().toISOString()
-        });
-
-        console.log(`✓ Committed to central database: ${reconstructedData.sliderValue}%`);
+        // Remove the heavy base64 string from memory to keep DB light
+        // (unless we are using it as the fallback)
+        if (reconstructedData.imageUrl !== reconstructedData.imageBase64) {
+           delete reconstructedData.imageBase64;
+        }
       }
+      // ==========================================================
 
-      // Clean up temporary chunks
-      cleanupChunks(uploadId);
+      // Save to "Database"
+      centralDatabase.latestSliderValue = {
+        sliderValue: reconstructedData.sliderValue,
+        timestamp: reconstructedData.timestamp,
+        source: reconstructedData.source,
+        imageUrl: reconstructedData.imageUrl, // URL or Base64
+        uploadId: uploadId
+      };
 
-      return res.json({
-        success: true,
-        message: 'Upload complete and committed',
-        received: status.received,
-        total: status.total
-      });
+      chunkStorage.delete(uploadId); // Cleanup
+
+      return res.json({ success: true, message: 'Upload complete', complete: true });
     }
 
-    // Chunk received but upload not yet complete
-    res.json({
-      success: true,
-      message: 'Chunk received',
-      received: status.received,
-      total: status.total
-    });
+    res.json({ success: true, message: 'Chunk received', complete: false });
 
   } catch (error) {
     console.error('Error processing chunk:', error);
@@ -192,85 +153,21 @@ app.post('/upload-chunk', (req, res) => {
   }
 });
 
-// Endpoint 2: Check upload status (for resume functionality)
+// Existing helper endpoints
 app.get('/upload-status', (req, res) => {
   const { uploadId } = req.query;
-
-  if (!uploadId) {
-    return res.status(400).json({ error: 'uploadId required' });
-  }
-
-  const receivedChunks = getReceivedChunks(uploadId);
   const upload = chunkStorage.get(uploadId);
-
+  const receivedChunks = upload ? Array.from(upload.chunks.keys()) : [];
   res.json({
-    uploadId,
     receivedChunks,
-    totalChunks: upload ? upload.totalChunks : 0,
-    complete: upload ? upload.receivedCount === upload.totalChunks : false
+    totalChunks: upload ? upload.totalChunks : 0
   });
 });
 
-// Endpoint 3: Get latest value (for Office Admin page)
 app.get('/latest-value', (req, res) => {
-  if (!centralDatabase.latestSliderValue) {
-    return res.json({
-      sliderValue: 0,
-      timestamp: new Date().toISOString(),
-      message: 'No data yet'
-    });
-  }
-
-  res.json(centralDatabase.latestSliderValue);
+  res.json(centralDatabase.latestSliderValue || {});
 });
 
-// Endpoint 4: Get history (optional)
-app.get('/history', (req, res) => {
-  res.json({
-    count: centralDatabase.history.length,
-    history: centralDatabase.history.slice(-50) // Last 50 entries
-  });
-});
-
-// Health check
-app.get('/health', (req, res) => {
-  res.json({
-    status: 'ok',
-    activeUploads: chunkStorage.size,
-    databaseEntries: centralDatabase.history.length,
-    latestValue: centralDatabase.latestSliderValue?.sliderValue || null
-  });
-});
-
-// Cleanup old incomplete uploads (run every 5 minutes)
-setInterval(() => {
-  const now = Date.now();
-  const timeout = 30 * 60 * 1000; // 30 minutes
-
-  for (const [uploadId, upload] of chunkStorage.entries()) {
-    if (now - upload.createdAt > timeout) {
-      console.log(`Cleaning up stale upload: ${uploadId}`);
-      chunkStorage.delete(uploadId);
-    }
-  }
-}, 5 * 60 * 1000);
-
-// Start server
 app.listen(PORT, () => {
-  console.log(`
-╔════════════════════════════════════════════════════════╗
-║  Chunked JSON Upload Server                           ║
-║  Status: RUNNING                                       ║
-║  Port: ${PORT}                                            ║
-╚════════════════════════════════════════════════════════╝
-
-Available Endpoints:
-  POST   /upload-chunk       - Receive JSON chunks
-  GET    /upload-status      - Check upload progress
-  GET    /latest-value       - Get current slider value
-  GET    /history            - Get update history
-  GET    /health             - Server health check
-
-Ready to accept chunked uploads!
-  `);
+  console.log(`Server running on port ${PORT}`);
 });
