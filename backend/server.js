@@ -1,10 +1,11 @@
-// Backend Server - Node.js + Express + Cloudinary
-// Install: npm install express cors body-parser cloudinary dotenv
+// Required dependencies: 
+// npm install express cors body-parser cloudinary dotenv mongoose
 
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const cloudinary = require('cloudinary').v2;
+const mongoose = require('mongoose');
 require('dotenv').config();
 
 const app = express();
@@ -12,35 +13,48 @@ const PORT = 3001;
 
 // Middleware
 app.use(cors());
-// Increased limit to 50mb to handle large Base64 chunks if needed
-app.use(bodyParser.json({ limit: '50mb' })); 
+app.use(bodyParser.json({ limit: '50mb' })); // Large limit for Base64 chunks
+
+// ==================== MONGODB SETUP ====================
+// Connect to MongoDB (Replace URI with your actual connection string)
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/site-monitor';
+
+mongoose.connect(MONGODB_URI)
+  .then(() => console.log('✅ Connected to MongoDB'))
+  .catch(err => console.error('❌ MongoDB connection error:', err));
+
+// Define the Schema
+const SiteUpdateSchema = new mongoose.Schema({
+  sliderValue: { type: Number, required: true },
+  imageUrl: { type: String }, // Stores the Cloudinary URL or Base64 fallback
+  source: { type: String, default: 'site_engineer' },
+  uploadId: { type: String },
+  createdAt: { type: Date, default: Date.now } // Automatically stores date & time
+});
+
+// Create the Model
+const SiteUpdate = mongoose.model('SiteUpdate', SiteUpdateSchema);
 
 // ==================== CLOUDINARY CONFIG ====================
-// Note: If these are not set, the app will fall back to storing 
-// the Base64 string directly in memory so the demo still works.
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET
 });
 
-// ==================== STORAGE ====================
+// ==================== MEMORY STORAGE (CHUNKS) ====================
+// We still use memory for chunks because they are temporary.
+// Only the final result gets saved to MongoDB.
 const chunkStorage = new Map();
 
-const centralDatabase = {
-  latestSliderValue: null,
-  history: []
-};
-
-// ==================== CHUNK MANAGEMENT ====================
-
+// ==================== CHUNK UTILITIES ====================
 function storeChunk(uploadId, chunkIndex, payload, totalChunks) {
   if (!chunkStorage.has(uploadId)) {
     chunkStorage.set(uploadId, {
       chunks: new Map(),
       totalChunks: totalChunks,
       receivedCount: 0,
-      createdAt: Date.now()
+      lastActivity: Date.now()
     });
   }
 
@@ -49,6 +63,7 @@ function storeChunk(uploadId, chunkIndex, payload, totalChunks) {
   if (!upload.chunks.has(chunkIndex)) {
     upload.chunks.set(chunkIndex, payload);
     upload.receivedCount++;
+    upload.lastActivity = Date.now();
   }
 
   return {
@@ -60,7 +75,6 @@ function storeChunk(uploadId, chunkIndex, payload, totalChunks) {
 
 function reconstructJSON(uploadId) {
   const upload = chunkStorage.get(uploadId);
-  
   if (!upload || upload.receivedCount !== upload.totalChunks) {
     throw new Error('Upload incomplete or not found');
   }
@@ -70,7 +84,6 @@ function reconstructJSON(uploadId) {
     .map(([_, payload]) => payload);
 
   const fullString = sortedChunks.join('');
-
   try {
     return JSON.parse(fullString);
   } catch (error) {
@@ -78,8 +91,19 @@ function reconstructJSON(uploadId) {
   }
 }
 
+// Cleanup stale chunks every 10 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, data] of chunkStorage.entries()) {
+    if (now - data.lastActivity > 1000 * 60 * 30) { // 30 mins
+      chunkStorage.delete(id);
+    }
+  }
+}, 1000 * 60 * 10);
+
 // ==================== API ENDPOINTS ====================
 
+// 1. Upload Chunk
 app.post('/upload-chunk', async (req, res) => {
   const { uploadId, chunkIndex, totalChunks, payload } = req.body;
 
@@ -87,62 +111,52 @@ app.post('/upload-chunk', async (req, res) => {
     return res.status(400).json({ error: 'Invalid payload' });
   }
 
-  console.log(`Received chunk ${chunkIndex}/${totalChunks - 1} for ${uploadId}`);
+  console.log(`Packet ${chunkIndex}/${totalChunks - 1} for ${uploadId}`);
 
   try {
     const status = storeChunk(uploadId, chunkIndex, payload, totalChunks);
 
     if (status.complete) {
-      console.log(`Upload ${uploadId} complete. Reconstructing...`);
-      
+      console.log(`📦 Upload ${uploadId} complete. Reconstructing...`);
       let reconstructedData = reconstructJSON(uploadId);
-      
-      // ==================== IMAGE PROCESSING ====================
-      // Check if payload contains an image to upload to Cloudinary
+      let finalImageUrl = null;
+
+      // --- Handle Image Upload to Cloudinary ---
       if (reconstructedData.imageBase64) {
-        console.log('Image detected. Attempting Cloudinary upload...');
-        
+        console.log('☁️ Uploading image to Cloudinary...');
         try {
-          // Check if Cloudinary is actually configured
-          if (!process.env.CLOUDINARY_CLOUD_NAME) {
-            throw new Error("Cloudinary not configured");
-          }
+          if (!process.env.CLOUDINARY_CLOUD_NAME) throw new Error("Cloudinary config missing");
 
           const uploadResponse = await cloudinary.uploader.upload(reconstructedData.imageBase64, {
             folder: "site_engineer_updates",
             resource_type: "auto"
           });
           
-          console.log(`Cloudinary Upload Success: ${uploadResponse.secure_url}`);
-          reconstructedData.imageUrl = uploadResponse.secure_url;
-
+          finalImageUrl = uploadResponse.secure_url;
+          console.log(`✅ Image uploaded: ${finalImageUrl}`);
         } catch (cloudError) {
-          console.warn(`Cloudinary upload skipped/failed (${cloudError.message}). Using Base64 fallback.`);
-          // Fallback: Use the raw base64 string as the image URL
-          // This ensures the demo works even without API keys
-          reconstructedData.imageUrl = reconstructedData.imageBase64;
-        }
-
-        // Remove the heavy base64 string from memory to keep DB light
-        // (unless we are using it as the fallback)
-        if (reconstructedData.imageUrl !== reconstructedData.imageBase64) {
-           delete reconstructedData.imageBase64;
+          console.warn(`⚠️ Cloudinary failed, using Base64 fallback: ${cloudError.message}`);
+          finalImageUrl = reconstructedData.imageBase64; // Fallback
         }
       }
-      // ==========================================================
 
-      // Save to "Database"
-      centralDatabase.latestSliderValue = {
+      // --- SAVE TO MONGODB ---
+      console.log('💾 Saving to MongoDB...');
+      const newUpdate = new SiteUpdate({
         sliderValue: reconstructedData.sliderValue,
-        timestamp: reconstructedData.timestamp,
-        source: reconstructedData.source,
-        imageUrl: reconstructedData.imageUrl, // URL or Base64
-        uploadId: uploadId
-      };
+        imageUrl: finalImageUrl,
+        source: reconstructedData.source || 'site_engineer',
+        uploadId: uploadId,
+        createdAt: new Date() // Explicitly set time
+      });
 
-      chunkStorage.delete(uploadId); // Cleanup
+      await newUpdate.save();
+      console.log('✅ Document saved to MongoDB');
 
-      return res.json({ success: true, message: 'Upload complete', complete: true });
+      // Cleanup memory
+      chunkStorage.delete(uploadId);
+
+      return res.json({ success: true, message: 'Data saved to MongoDB', complete: true });
     }
 
     res.json({ success: true, message: 'Chunk received', complete: false });
@@ -153,7 +167,7 @@ app.post('/upload-chunk', async (req, res) => {
   }
 });
 
-// Existing helper endpoints
+// 2. Get Upload Status (for resuming uploads)
 app.get('/upload-status', (req, res) => {
   const { uploadId } = req.query;
   const upload = chunkStorage.get(uploadId);
@@ -164,10 +178,38 @@ app.get('/upload-status', (req, res) => {
   });
 });
 
-app.get('/latest-value', (req, res) => {
-  res.json(centralDatabase.latestSliderValue || {});
+// 3. Get Latest Value (Fetched from MongoDB)
+app.get('/latest-value', async (req, res) => {
+  try {
+    // Find the most recent entry
+    const latest = await SiteUpdate.findOne().sort({ createdAt: -1 });
+    
+    if (latest) {
+      res.json({
+        sliderValue: latest.sliderValue,
+        timestamp: latest.createdAt,
+        imageUrl: latest.imageUrl,
+        source: latest.source
+      });
+    } else {
+      res.json({}); // No data yet
+    }
+  } catch (error) {
+    console.error('Database Error:', error);
+    res.status(500).json({ error: 'Failed to fetch data' });
+  }
+});
+
+// 4. Get History (Optional utility)
+app.get('/history', async (req, res) => {
+  try {
+    const history = await SiteUpdate.find().sort({ createdAt: -1 }).limit(10);
+    res.json(history);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
