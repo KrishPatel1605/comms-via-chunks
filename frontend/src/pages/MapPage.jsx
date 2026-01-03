@@ -64,7 +64,7 @@ const PolygonPreview = ({ points }) => {
           fill="#3b82f6" 
           fillOpacity="0.6" 
           stroke="#2563eb" 
-          strokeWidth="8" 
+          strokeWidth="3" 
           strokeLinejoin="round"
         />
       </svg>
