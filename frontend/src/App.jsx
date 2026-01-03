@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { AlertCircle, CheckCircle, Upload, RefreshCw, Image as ImageIcon, X } from 'lucide-react';
+import { AlertCircle, CheckCircle, Upload, RefreshCw, Image as ImageIcon, X, Map } from 'lucide-react';
 
 // Increased chunk size to 50KB for better image performance
-const CHUNK_SIZE = 1024 * 50; 
+const CHUNK_SIZE = 1024 * 50;
 
-const API_URL = window.location.origin.includes('localhost') 
-  ? 'http://localhost:3001' 
+const API_URL = window.location.origin.includes('localhost')
+  ? 'http://localhost:3001'
   : 'https://comms-via-chunks.onrender.com';
 
 // Utility functions for chunking
@@ -96,7 +96,29 @@ const uploadChunkedData = async (data, onProgress) => {
   return uploadId;
 };
 
-// Site Engineer Page
+// --- COMPONENTS ---
+
+// 1. Map Page
+const MapPage = () => {
+  return (
+    <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
+      <div className="bg-white p-10 rounded-xl shadow-lg flex flex-col items-center gap-4 max-w-md w-full text-center">
+        <div className="p-4 bg-blue-50 rounded-full">
+          <Map className="w-12 h-12 text-blue-600" />
+        </div>
+        <h1 className="text-3xl font-bold text-gray-800">Hello World</h1>
+        <p className="text-gray-500">
+          You are currently at <strong>{window.location.pathname}</strong>
+        </p>
+        <p className="text-gray-400 text-sm">
+          Map integration coming soon.
+        </p>
+      </div>
+    </div>
+  );
+};
+
+// 2. Site Engineer Page
 const SiteEngineerPage = () => {
   const [sliderValue, setSliderValue] = useState(50);
   const [uploading, setUploading] = useState(false);
@@ -144,7 +166,7 @@ const SiteEngineerPage = () => {
       source: 'site_engineer',
       timestamp: new Date().toISOString(),
       sliderValue: sliderValue,
-      imageBase64: selectedImage, // Send base64 image (Backend handles Cloudinary)
+      imageBase64: selectedImage, 
       metadata: {
         user: 'Site Engineer',
         location: 'Field Site A',
@@ -304,7 +326,7 @@ const SiteEngineerPage = () => {
   );
 };
 
-// Office Admin Page
+// 3. Office Admin Page
 const OfficeAdminPage = () => {
   const [data, setData] = useState({ sliderValue: 0, timestamp: null, imageUrl: null });
   const [lastUpdate, setLastUpdate] = useState('Never');
@@ -426,34 +448,76 @@ const OfficeAdminPage = () => {
   );
 };
 
-// Main App Router
+// --- MAIN APP COMPONENT WITH CUSTOM ROUTING ---
+
 export default function App() {
-  const [page, setPage] = useState('engineer');
+  // Initialize state with current window pathname
+  const [currentPath, setCurrentPath] = useState(window.location.pathname);
+
+  useEffect(() => {
+    // Handler for back/forward buttons
+    const onPopState = () => {
+      setCurrentPath(window.location.pathname);
+    };
+    
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  // Custom navigation function to update URL without reload
+  const navigate = (path) => {
+    window.history.pushState({}, '', path);
+    setCurrentPath(path);
+  };
+
+  // Determine active page based on path
+  const getPage = () => {
+    // Handle root path or empty string
+    if (currentPath === '/' || currentPath === '') return 'engineer';
+    // Strict matching for requested paths
+    if (currentPath === '/map') return 'map';
+    if (currentPath === '/admin') return 'admin';
+    // Fallback to engineer if path unknown, or handle 404
+    return 'engineer'; 
+  };
+
+  const activePage = getPage();
 
   return (
     <div>
       <div className="bg-slate-900 text-white p-4 sticky top-0 z-10 shadow-md">
-        <div className="max-w-4xl mx-auto flex justify-center gap-2 md:gap-4">
+        <div className="max-w-4xl mx-auto flex justify-center gap-2 md:gap-4 overflow-x-auto">
           <button
-            onClick={() => setPage('engineer')}
-            className={`px-4 md:px-6 py-2 rounded-lg font-medium transition text-sm md:text-base ${
-              page === 'engineer' ? 'bg-indigo-600 text-white shadow-lg' : 'text-gray-400 hover:bg-slate-800 hover:text-white'
+            onClick={() => navigate('/')}
+            className={`px-4 md:px-6 py-2 rounded-lg font-medium transition text-sm md:text-base whitespace-nowrap ${
+              activePage === 'engineer' ? 'bg-indigo-600 text-white shadow-lg' : 'text-gray-400 hover:bg-slate-800 hover:text-white'
             }`}
           >
             Site Engineer
           </button>
           <button
-            onClick={() => setPage('admin')}
-            className={`px-4 md:px-6 py-2 rounded-lg font-medium transition text-sm md:text-base ${
-              page === 'admin' ? 'bg-emerald-600 text-white shadow-lg' : 'text-gray-400 hover:bg-slate-800 hover:text-white'
+            onClick={() => navigate('/admin')}
+            className={`px-4 md:px-6 py-2 rounded-lg font-medium transition text-sm md:text-base whitespace-nowrap ${
+              activePage === 'admin' ? 'bg-emerald-600 text-white shadow-lg' : 'text-gray-400 hover:bg-slate-800 hover:text-white'
             }`}
           >
             Office Admin
           </button>
+          <button
+            onClick={() => navigate('/map')}
+            className={`px-4 md:px-6 py-2 rounded-lg font-medium transition text-sm md:text-base whitespace-nowrap flex items-center gap-2 ${
+              activePage === 'map' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:bg-slate-800 hover:text-white'
+            }`}
+          >
+            <Map className="w-4 h-4" />
+            Map
+          </button>
         </div>
       </div>
 
-      {page === 'engineer' ? <SiteEngineerPage /> : <OfficeAdminPage />}
+      {activePage === 'engineer' && <SiteEngineerPage />}
+      {activePage === 'admin' && <OfficeAdminPage />}
+      {activePage === 'map' && <MapPage />}
     </div>
   );
 }
