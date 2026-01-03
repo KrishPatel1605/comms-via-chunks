@@ -42,7 +42,7 @@ export default function MapPage() {
       // Initialize map
       const map = L.map(mapRef.current, {
         zoomControl: false // We'll add it manually or just hide it to prevent UI clash if needed, but let's just z-index the header higher
-      }).setView([51.505, -0.09], 13);
+      }).setView([19.0760, 72.8777], 13);
 
       L.control.zoom({
         position: 'bottomright'
