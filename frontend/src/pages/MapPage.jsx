@@ -141,8 +141,10 @@ export default function MapPage() {
         color: '#ef4444',     // Red border
         fillColor: '#ef4444', // Red fill
         fillOpacity: 0.35,
-        weight: 2,
-        smoothFactor: 1 // Optimize the freehand line
+        weight: 3,            // Thicker border for better visibility
+        smoothFactor: 1,      // Optimize the freehand line
+        dashArray: '12, 12',  // Creates the dashed border (- - - -)
+        className: 'animated-border' // Apply custom class for animation
       }).addTo(map);
       
       polygon.bindPopup("Highlighted Area");
@@ -161,6 +163,20 @@ export default function MapPage() {
   return (
     <div className="flex flex-col h-screen bg-gray-100 relative overflow-hidden font-sans">
       
+      {/* Custom Styles for the Rotating Border Animation */}
+      <style>{`
+        @keyframes dash-rotate {
+          from { stroke-dashoffset: 0; }
+          to { stroke-dashoffset: 240; } /* Multiple of dashArray sum (12+12=24) for smooth loop */
+        }
+        
+        /* Target the SVG path created by Leaflet */
+        path.animated-border {
+          animation: dash-rotate 4s linear infinite;
+          stroke-linecap: round;
+        }
+      `}</style>
+
       {/* Header / Top Bar - Increased Z-Index to 5000 to stay above everything */}
       <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[5000] bg-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-4 transition-all duration-300 border border-gray-100">
         <div className="flex items-center gap-2">
