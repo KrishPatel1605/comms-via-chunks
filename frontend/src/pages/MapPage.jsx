@@ -20,6 +20,27 @@ const getTileUrl = (lat, lng, zoom) => {
   return `https://tile.openstreetmap.org/${zoom}/${x}/${y}.png`;
 };
 
+// --- Point-in-polygon (ray-casting) ---
+// point: { lat, lng }
+// vs: array of { lat, lng }
+const isPointInPolygon = (point, vs) => {
+  if (!vs || vs.length < 3) return false;
+  const x = point.lng;
+  const y = point.lat;
+
+  let inside = false;
+  for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+    const xi = vs[i].lng, yi = vs[i].lat;
+    const xj = vs[j].lng, yj = vs[j].lat;
+
+    const intersect = ((yi > y) !== (yj > y)) &&
+      (x < (xj - xi) * (y - yi) / (yj - yi + Number.EPSILON) + xi);
+    if (intersect) inside = !inside;
+  }
+
+  return inside;
+};
+
 // --- Mini Preview Component with Map Background ---
 const PolygonPreview = ({ points }) => {
   if (!points || points.length < 2) return null;
@@ -82,13 +103,19 @@ export default function MapPage() {
   const [hoveredPolyId, setHoveredPolyId] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [tempName, setTempName] = useState("");
-  
+
+  // New: user location & inside-zone info
+  const [userLocation, setUserLocation] = useState(null); // { lat, lng }
+  const [insideZoneId, setInsideZoneId] = useState(null); // id of polygon containing user (or null)
+
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const polygonLayersRef = useRef({}); 
   const isDrawingRef = useRef(false);
   const currentPathRef = useRef([]);
   const tempPolylineRef = useRef(null);
+
+  const userMarkerRef = useRef(null);
 
   // Load Leaflet
   useEffect(() => {
@@ -151,6 +178,7 @@ export default function MapPage() {
 
     Object.entries(polygonLayersRef.current).forEach(([id, layer]) => {
       const isHovered = parseInt(id) === hoveredPolyId;
+      const isInside = parseInt(id) === insideZoneId;
       
       if (isHovered) {
         layer.setStyle({
@@ -172,7 +200,7 @@ export default function MapPage() {
         layer.closePopup();
       }
     });
-  }, [hoveredPolyId]);
+  }, [hoveredPolyId, insideZoneId]);
 
   // Drawing Logic
   useEffect(() => {
@@ -300,17 +328,28 @@ export default function MapPage() {
 
       polygonLayersRef.current[poly.id] = polygon;
     });
-  }, [polygons, editingId]);
+
+    // After polygons change, re-evaluate whether user's current location is inside any polygon
+    if (userLocation) {
+      evaluateUserInsideZone(userLocation, polygons);
+    }
+  }, [polygons, editingId]); // eslint-disable-line
 
   // --- Actions ---
 
   const handleUndoLast = () => setPolygons(prev => prev.slice(0, -1));
-  const handleClearAll = () => setPolygons([]);
+  const handleClearAll = () => {
+    setPolygons([]);
+    setInsideZoneId(null);
+  };
 
   const deletePolygon = (id, e) => {
     e.stopPropagation();
     setPolygons(prev => prev.filter(p => p.id !== id));
     if(hoveredPolyId === id) setHoveredPolyId(null);
+    if (insideZoneId === id) {
+      setInsideZoneId(null);
+    }
   };
 
   const focusOnPolygon = (id) => {
@@ -338,6 +377,125 @@ export default function MapPage() {
     setTempName("");
   };
 
+  // --- Geolocation and Marker logic ---
+
+  // Request user's location once
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+    // try to get current position once
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        setUserLocation(loc);
+      },
+      (err) => {
+        // Could log or show a toast. We won't be noisy here.
+        console.warn('Geolocation error:', err && err.message);
+      },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60 * 1000 }
+    );
+  }, []);
+
+  // Provide a function to evaluate whether userLocation is inside any polygon
+  const evaluateUserInsideZone = (loc, polygonsList = polygons) => {
+    if (!loc) {
+      setInsideZoneId(null);
+      return;
+    }
+    for (let poly of polygonsList) {
+      if (isPointInPolygon(loc, poly.points)) {
+        setInsideZoneId(poly.id);
+        // center on polygon and open popup for clarity
+        const layer = polygonLayersRef.current[poly.id];
+        if (layer && mapInstanceRef.current) {
+          // open polygon popup and pan to user
+          layer.openPopup();
+          // optionally pan to user marker
+          // mapInstanceRef.current.panTo([loc.lat, loc.lng]);
+        }
+        return;
+      }
+    }
+    setInsideZoneId(null);
+  };
+
+  useEffect(() => {
+    if (!mapInstanceRef.current || !isMapReady) return;
+    const L = window.L;
+    const map = mapInstanceRef.current;
+
+    // remove old marker if exists
+    if (userMarkerRef.current) {
+      map.removeLayer(userMarkerRef.current);
+      userMarkerRef.current = null;
+    }
+
+    // ❗ Only create & show marker when inside a zone
+    if (!userLocation || !insideZoneId) return;
+
+    const marker = L.marker([userLocation.lat, userLocation.lng], {
+      title: 'Your location'
+    }).addTo(map);
+
+    marker.bindPopup(`<div style="font-weight:600;color:#059669">1 on-site engineer</div>`);
+
+    userMarkerRef.current = marker;
+    marker.openPopup();
+    
+    // If inside a zone, open popup and optionally zoom slightly
+    if (insideZoneId) {
+      marker.openPopup();
+      // optionally fit to polygon bounds + marker
+      const layer = polygonLayersRef.current[insideZoneId];
+      if (layer) {
+        // Fit to polygon (keeps marker visible)
+        // but don't zoom too aggressively—use fitBounds with padding
+        map.fitBounds(layer.getBounds(), { padding: [80, 80] });
+      } else {
+        map.panTo([userLocation.lat, userLocation.lng]);
+      }
+    } else {
+      // if off-site, pan to location but keep zoom
+      // only pan if the location is not currently in view
+      const bounds = map.getBounds();
+      if (!bounds.contains([userLocation.lat, userLocation.lng])) {
+        map.panTo([userLocation.lat, userLocation.lng]);
+      }
+    }
+
+    return () => {
+      if (userMarkerRef.current) {
+        try { map.removeLayer(userMarkerRef.current); } catch(e) {}
+        userMarkerRef.current = null;
+      }
+    };
+  }, [userLocation, insideZoneId, isMapReady]); // Fixed missing comma here
+
+  // Re-evaluate inside zone each time userLocation changes
+  useEffect(() => {
+    if (!userLocation) return;
+    evaluateUserInsideZone(userLocation, polygons);
+  }, [userLocation]); // eslint-disable-line
+
+  // Helper: request a fresh location (button)
+  const refreshUserLocation = () => {
+    if (!navigator.geolocation) {
+      alert('Geolocation is not supported by your browser.');
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        setUserLocation(loc);
+      },
+      (err) => {
+        console.warn('Geolocation error:', err && err.message);
+        alert('Unable to retrieve location: ' + (err && err.message ? err.message : 'unknown'));
+      },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+    );
+  };
+
   return (
     <div className="flex h-screen bg-gray-100 overflow-hidden font-sans">
       <style>{`
@@ -355,23 +513,33 @@ export default function MapPage() {
         }
       `}</style>
 
-      {/* --- SIDEBAR --- */}
+      {/*--- SIDEBAR ---*/}
       <div 
-        className={`bg-white shadow-xl z-[4000] flex flex-col transition-all duration-300 ease-in-out border-r border-gray-200 ${
-          isSidebarOpen ? 'w-80 translate-x-0' : 'w-0 -translate-x-full opacity-0 overflow-hidden'
-        }`}
+        className={`bg-white shadow-xl z-[4000] flex flex-col transition-all duration-300 ease-in-out border-r border-gray-200 
+          ${isSidebarOpen ? 'w-80 translate-x-0' : 'w-0 -translate-x-full opacity-0 overflow-hidden'}
+        `}
       >
         <div className="p-5 border-b border-gray-100 bg-white flex justify-between items-center flex-shrink-0">
           <div>
             <h2 className="font-bold text-gray-800 text-lg">Saved Areas</h2>
             <p className="text-xs text-gray-400 font-medium">{polygons.length} areas defined</p>
           </div>
-          <button 
-            onClick={() => setIsSidebarOpen(false)}
-            className="p-1 hover:bg-gray-100 rounded-md text-gray-500 transition-colors"
-          >
-            <PanelLeftClose size={20} />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={refreshUserLocation}
+              className="text-xs text-gray-500 px-2 py-1 rounded-full hover:bg-gray-50"
+              title="Refresh my location"
+            >
+              Locate me
+            </button>
+
+            <button 
+              onClick={() => setIsSidebarOpen(false)}
+              className="p-1 hover:bg-gray-100 rounded-md text-gray-500 transition-colors"
+            >
+              <PanelLeftClose size={20} />
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-3 space-y-3">
@@ -385,7 +553,6 @@ export default function MapPage() {
             polygons.map((poly) => (
               <div 
                 key={poly.id}
-                // REMOVED onMouseEnter to prevent map flash as requested
                 onClick={() => focusOnPolygon(poly.id)}
                 className={`group relative flex gap-3 p-3 rounded-xl border transition-all cursor-pointer ${
                   editingId === poly.id 
@@ -421,9 +588,15 @@ export default function MapPage() {
                     </div>
                   ) : (
                     <div className="flex justify-between items-center group/title">
-                      <h3 className="font-semibold text-sm truncate text-gray-700">
+                      <h3 className="font-semibold text-sm truncate text-gray-700 flex items-center gap-1">
                         {poly.name}
+                        {insideZoneId === poly.id && (
+                          <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
+                            1 on-site engineer
+                          </span>
+                        )}
                       </h3>
+
                       <button
                         onClick={(e) => startEditing(poly, e)}
                         className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-all"
@@ -501,14 +674,32 @@ export default function MapPage() {
           <div className="h-8 w-[1px] bg-gray-200 mx-1 sm:mx-2 flex-shrink-0"></div>
 
           {!drawingMode ? (
-            <button 
-              onClick={() => setDrawingMode(true)}
-              className="flex-shrink-0 flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-3 sm:px-4 py-2 rounded-full text-sm font-medium transition-colors shadow-sm"
-            >
-              <Pencil size={16} />
-              <span className="hidden sm:inline">Start Drawing</span>
-              <span className="sm:hidden">Draw</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => setDrawingMode(true)}
+                className="flex-shrink-0 flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-3 sm:px-4 py-2 rounded-full text-sm font-medium transition-colors shadow-sm"
+              >
+                <Pencil size={16} />
+                <span className="hidden sm:inline">Start Drawing</span>
+                <span className="sm:hidden">Draw</span>
+              </button>
+
+              {/* Location refresh/center button */}
+              <button
+                onClick={() => {
+                  if (userLocation && mapInstanceRef.current) {
+                    mapInstanceRef.current.panTo([userLocation.lat, userLocation.lng]);
+                    if (userMarkerRef.current) userMarkerRef.current.openPopup();
+                  } else {
+                    refreshUserLocation();
+                  }
+                }}
+                className="p-2 hover:bg-gray-100 rounded-full text-gray-600 transition-colors"
+                title="Center on my location / refresh"
+              >
+                <Eye size={16} />
+              </button>
+            </div>
           ) : (
             <div className="flex items-center gap-1 sm:gap-2">
                <button 
