@@ -2,7 +2,10 @@ const express = require('express');
 const router = express.Router();
 const cloudinary = require('../config/cloudinary');
 const SiteUpdate = require('../models/SiteUpdate');
+const Task = require('../models/Task');
 const { storeChunk, reconstructJSON, getUploadStatus, deleteUpload } = require('../utils/chunkStorage');
+
+// --- Existing Upload Logic ---
 
 // POST /upload-chunk
 router.post('/upload-chunk', async (req, res) => {
@@ -51,7 +54,6 @@ router.post('/upload-chunk', async (req, res) => {
       await newUpdate.save();
       console.log('Document saved to MongoDB');
 
-      // Cleanup memory
       deleteUpload(uploadId);
 
       return res.json({ success: true, message: 'Data saved to MongoDB', complete: true });
@@ -91,6 +93,48 @@ router.get('/history', async (req, res) => {
   try {
     const history = await SiteUpdate.find().sort({ createdAt: -1 }).limit(10);
     res.json(history);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// --- New Task Management Routes ---
+
+// GET /tasks - Fetch all tasks
+router.get('/tasks', async (req, res) => {
+  try {
+    const tasks = await Task.find().sort({ createdAt: -1 });
+    res.json(tasks);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /tasks - Create a new task
+router.post('/tasks', async (req, res) => {
+  try {
+    if (!req.body.description) return res.status(400).json({ error: 'Description required' });
+    const task = new Task({ description: req.body.description });
+    await task.save();
+    res.json(task);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// PATCH /tasks/:id - Update task status
+router.patch('/tasks/:id', async (req, res) => {
+  try {
+    const { status } = req.body;
+    if (!['pending', 'in-progress', 'completed'].includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+    const task = await Task.findByIdAndUpdate(
+      req.params.id, 
+      { status }, 
+      { new: true }
+    );
+    res.json(task);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
