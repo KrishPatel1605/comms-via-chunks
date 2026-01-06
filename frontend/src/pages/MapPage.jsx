@@ -14,7 +14,8 @@ import {
   ChevronDown,
   ChevronRight,
   User,
-  Clock
+  Clock,
+  Timer
 } from 'lucide-react';
 
 // --- Helper to get Tile URL for Preview ---
@@ -588,6 +589,16 @@ export default function MapPage() {
                                 <p className="text-xs text-gray-400">Time Entered</p>
                                 <p className="font-mono text-xs font-medium bg-gray-100 px-2 py-0.5 rounded text-gray-700 inline-block mt-0.5">
                                     {getEntryTime()}
+                                </p>
+                             </div>
+                          </div>
+
+                          <div className="flex items-center gap-3 text-gray-600 pl-1">
+                             <Timer size={16} className="text-gray-400" />
+                             <div>
+                                <p className="text-xs text-gray-400">Work Duration</p>
+                                <p className="font-mono text-xs font-bold bg-blue-50 text-blue-700 px-2 py-0.5 rounded inline-block mt-0.5">
+                                    30 min
                                 </p>
                              </div>
                           </div>
