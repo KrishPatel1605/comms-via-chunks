@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { CheckCircle, Image as ImageIcon, RefreshCw, Plus, Clock, PlayCircle, CheckCircle2 } from 'lucide-react';
 
-import { API_URL } from './api/config';
+import { API_URL } from "../api/config";
 
 export default function OfficeAdminPage() {
   const [data, setData] = useState({ sliderValue: 0, timestamp: null, imageUrl: null });

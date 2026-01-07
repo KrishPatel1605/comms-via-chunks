@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { AlertCircle, CheckCircle, Upload, RefreshCw, Image as ImageIcon, X, PlayCircle, CheckCircle2, Clock } from 'lucide-react';
 
-import { API_URL } from './api/config';
+import { API_URL } from "../api/config";
 
 const fileToBase64 = (file) => {
   return new Promise((resolve, reject) => {
