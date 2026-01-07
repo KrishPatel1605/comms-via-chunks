@@ -178,8 +178,6 @@ export default function MapPage() {
 
     Object.entries(polygonLayersRef.current).forEach(([id, layer]) => {
       const isHovered = parseInt(id) === hoveredPolyId;
-      // We don't auto-highlight purely based on insideZoneId anymore to keep map cleaner,
-      // but we do highlight on hover.
       
       if (isHovered) {
         layer.setStyle({
@@ -203,7 +201,7 @@ export default function MapPage() {
     });
   }, [hoveredPolyId, insideZoneId]);
 
-  // Drawing Logic
+  // Drawing Logic (Mouse & Touch)
   useEffect(() => {
     if (!mapInstanceRef.current) return;
     const map = mapInstanceRef.current;
@@ -233,7 +231,7 @@ export default function MapPage() {
       map.dragging.disable();
       container.style.cursor = 'crosshair';
       
-      // Basic event handlers for mouse/touch drawing...
+      // --- MOUSE HANDLERS ---
       const handleMouseDown = (e) => {
         isDrawingRef.current = true;
         currentPathRef.current = [e.latlng]; 
@@ -244,18 +242,68 @@ export default function MapPage() {
         currentPathRef.current.push(e.latlng);
         tempPolylineRef.current.setLatLngs(currentPathRef.current);
       };
-      // ... (Touch handlers omitted for brevity but assumed similar to previous version) ...
 
+      // --- TOUCH HANDLERS (for Mobile) ---
+      // We attach these to the container to strictly control behavior (preventDefault)
+      const handleTouchStart = (e) => {
+        if (e.touches.length !== 1) return; // Only allow single finger drawing
+        // Important: Prevent default to stop map scrolling/refreshing
+        e.preventDefault(); 
+        isDrawingRef.current = true;
+
+        const touch = e.touches[0];
+        const rect = container.getBoundingClientRect();
+        // Calculate LatLng relative to container
+        const point = [touch.clientX - rect.left, touch.clientY - rect.top];
+        const latlng = map.containerPointToLatLng(point);
+
+        currentPathRef.current = [latlng];
+        tempPolylineRef.current.setLatLngs(currentPathRef.current);
+      };
+
+      const handleTouchMove = (e) => {
+        if (!isDrawingRef.current) return;
+        e.preventDefault(); // Stop scrolling while dragging
+
+        const touch = e.touches[0];
+        const rect = container.getBoundingClientRect();
+        const point = [touch.clientX - rect.left, touch.clientY - rect.top];
+        const latlng = map.containerPointToLatLng(point);
+
+        currentPathRef.current.push(latlng);
+        tempPolylineRef.current.setLatLngs(currentPathRef.current);
+      };
+
+      const handleTouchEnd = (e) => {
+        finishShape();
+      };
+
+      // Add Mouse Listeners (Leaflet API)
       map.on('mousedown', handleMouseDown);
       map.on('mousemove', handleMouseMove);
       map.on('mouseup', finishShape);
-      // Clean up...
+
+      // Add Touch Listeners (Native DOM API for control)
+      // Passive: false is required to use preventDefault
+      container.addEventListener('touchstart', handleTouchStart, { passive: false });
+      container.addEventListener('touchmove', handleTouchMove, { passive: false });
+      container.addEventListener('touchend', handleTouchEnd);
+      container.addEventListener('touchcancel', handleTouchEnd);
+
       return () => {
         map.dragging.enable();
         container.style.cursor = '';
+        
+        // Clean up Mouse
         map.off('mousedown', handleMouseDown);
         map.off('mousemove', handleMouseMove);
         map.off('mouseup', finishShape);
+        
+        // Clean up Touch
+        container.removeEventListener('touchstart', handleTouchStart);
+        container.removeEventListener('touchmove', handleTouchMove);
+        container.removeEventListener('touchend', handleTouchEnd);
+        container.removeEventListener('touchcancel', handleTouchEnd);
       };
     } else {
       map.dragging.enable();
