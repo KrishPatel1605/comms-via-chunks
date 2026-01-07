@@ -55,7 +55,7 @@ const uploadChunkedData = async (payload, onProgress, apiUrl) => {
   return uploadId;
 };
 
-export default function SiteEngineerPage({ materialRequests = [], addMaterialRequest }) {
+export default function SiteEngineerPage() {
   // Task State (Backend)
   const [tasks, setTasks] = useState([]);
   
@@ -66,14 +66,19 @@ export default function SiteEngineerPage({ materialRequests = [], addMaterialReq
   const [selectedImage, setSelectedImage] = useState(null);
   const fileInputRef = useRef(null);
 
-  // Material Form State (Local Only)
+  // Material State (Backend Integrated)
+  const [materialRequests, setMaterialRequests] = useState([]);
   const [matName, setMatName] = useState('');
   const [matQty, setMatQty] = useState('');
 
-  // Fetch tasks on load
+  // Fetch all initial data
   useEffect(() => {
     fetchTasks();
-    const interval = setInterval(fetchTasks, 5000);
+    fetchMaterials();
+    const interval = setInterval(() => {
+      fetchTasks();
+      fetchMaterials();
+    }, 5000);
     return () => clearInterval(interval);
   }, []);
 
@@ -85,6 +90,17 @@ export default function SiteEngineerPage({ materialRequests = [], addMaterialReq
       }
     } catch (error) {
       console.error('Failed to fetch tasks:', error);
+    }
+  };
+
+  const fetchMaterials = async () => {
+    try {
+      const response = await fetch(`${API_URL}/materials`);
+      if (response.ok) {
+        setMaterialRequests(await response.json());
+      }
+    } catch (error) {
+      console.error('Failed to fetch materials:', error);
     }
   };
 
@@ -161,20 +177,30 @@ export default function SiteEngineerPage({ materialRequests = [], addMaterialReq
     }
   };
 
-  const handleMaterialSubmit = (e) => {
+  // Material Logic (POST to Backend)
+  const handleMaterialSubmit = async (e) => {
     e.preventDefault();
     if (!matName || !matQty) return;
-    if (addMaterialRequest) {
-      addMaterialRequest({
-        id: Date.now(),
-        name: matName,
-        qty: matQty,
-        status: 'pending',
-        timestamp: new Date().toISOString()
+    
+    try {
+      const response = await fetch(`${API_URL}/materials`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: matName,
+          qty: matQty
+        })
       });
+
+      if (response.ok) {
+        setMatName('');
+        setMatQty('');
+        // Refresh list from server
+        await fetchMaterials();
+      }
+    } catch (error) {
+      console.error('Error submitting material request:', error);
     }
-    setMatName('');
-    setMatQty('');
   };
 
   const getStatusColor = (status) => {
@@ -247,7 +273,7 @@ export default function SiteEngineerPage({ materialRequests = [], addMaterialReq
               </div>
             </div>
 
-            {/* Material Request Section (Local Only) */}
+            {/* Material Request Section (POST Integrated) */}
             <div className="border-t pt-8">
               <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
                 <ShoppingCart className="w-5 h-5 text-amber-600" />
@@ -275,7 +301,7 @@ export default function SiteEngineerPage({ materialRequests = [], addMaterialReq
 
               <div className="space-y-2">
                 {materialRequests.map(req => (
-                  <div key={req.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border text-sm">
+                  <div key={req._id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border text-sm">
                     <div className="flex items-center gap-3">
                       <Package className="w-4 h-4 text-gray-400" />
                       <span><span className="font-bold">{req.name}</span> • {req.qty}</span>
