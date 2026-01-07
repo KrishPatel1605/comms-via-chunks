@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { AlertCircle, CheckCircle, Upload, RefreshCw, Image as ImageIcon, X, PlayCircle, CheckCircle2, Clock, Camera, FormIcon } from 'lucide-react';
+import { AlertCircle, CheckCircle, Upload, RefreshCw, Image as ImageIcon, X, PlayCircle, CheckCircle2, Clock, Camera, FormIcon, MapPin } from 'lucide-react';
 import Header from '../Components/Header'
+import { Link } from "react-router-dom";
 
 // --- INLINED CONSTANTS & UTILS ---
 const API_URL = 'http://localhost:3001';
@@ -166,7 +167,7 @@ export default function SiteEngineerPage() {
 
       <div className="relative z-10 max-w-2xl mx-auto rounded-xl mt-15  p-6 md:p-8">
         <h1 className="text-4xl staatliches_ns text-white gap-3 mt-5 flex items-center">
-          <FormIcon className='w-8 h-8'/>
+          <FormIcon className='w-8 h-8' />
           DPR Form
         </h1>
 
@@ -244,7 +245,7 @@ export default function SiteEngineerPage() {
 
           {/* Image Upload */}
           <div className="pt-6">
-            <label className="font-medium text-[#4361ee] staatliches_ns text-3xl flex items-center gap-2"><Camera className='w-8 h-8'/>Site Photo (Optional)</label>
+            <label className="font-medium text-[#4361ee] staatliches_ns text-3xl flex items-center gap-2"><Camera className='w-8 h-8' />Site Photo (Optional)</label>
 
             {!selectedImage ? (
               <div onClick={() => fileInputRef.current?.click()} className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center cursor-pointer hover:border-indigo-500 hover:bg-indigo-50 transition group">
@@ -265,6 +266,16 @@ export default function SiteEngineerPage() {
               </div>
             )}
             <input type="file" ref={fileInputRef} onChange={handleImageSelect} accept="image/*" className="hidden" />
+          </div>
+
+          <div className="pt-6 flex flex-col">
+            <label className="font-medium text-[#4361ee] staatliches_ns text-3xl flex items-center gap-2"><Camera className='w-8 h-8' />Mark Attendence</label>
+            <div className='mt-4 flex flex-col items-center'>
+              <Link className='bg-white border-2 border-[#4361ee] rounded-lg px-2 py-2 text-2xl poppins text-center flex items-center justify-center gap-2 text-[#4361ee] w-[80%]'>
+                <MapPin className='w-7 h-7'/>
+                Visit Site Map
+              </Link>
+            </div>
           </div>
 
           <button onClick={handleUpload} disabled={uploading} className="w-full px-6 py-4 bg-[#4361ee] text-white rounded-xl font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center justify-center gap-2 shadow-md hover:shadow-lg transform active:scale-[0.99]">
