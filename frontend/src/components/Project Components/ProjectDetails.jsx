@@ -1,12 +1,22 @@
 import React, { useState } from 'react'
 import { Calendar, ChevronLeft, ChevronRight, Hash, Home, MapPin, Ruler } from 'lucide-react'
+import { Link } from "react-router-dom";
 
 const ProjectDetails = () => {
 
   const slides = [
-    { id: 1, color: "bg-green-400" },
-    { id: 2, color: "bg-yellow-400" },
-    { id: 3, color: "bg-red-400" }
+    {
+      id: 1,
+      image: "/public/image/project1.jpg",
+    },
+    {
+      id: 2,
+      image: "/public/image/project2.jpg",
+    },
+    {
+      id: 3,
+      image: "/public/image/project3.jpg",
+    },
   ]
 
   const [current, setCurrent] = useState(0)
@@ -57,6 +67,7 @@ const ProjectDetails = () => {
         </div>
 
         {/* Slider */}
+
         <div className="relative w-full mt-6 h-[420px] flex items-center justify-center">
 
           <div className="relative w-[90%] h-full">
@@ -66,18 +77,21 @@ const ProjectDetails = () => {
               return (
                 <div
                   key={slide.id}
-                  className={`
-                    absolute top-10 left-1/2
-                    h-[300px] w-[60%]
-                    rounded-xl shadow-xl transition-all duration-500
-                    ${slide.color}
-                  `}
+                  className="
+            absolute top-10 left-1/2
+            h-[300px] w-[60%]
+            rounded-xl shadow-xl overflow-hidden
+            transition-all duration-500
+          "
                   style={{
+                    backgroundImage: `url(${slide.image})`,
+                    backgroundSize: "cover",
+                    backgroundPosition: "center",
                     transform: `
-                      translateX(${offset * 60}%)
-                      translateX(-50%)
-                      scale(${index === current ? 1.1 : 0.9})
-                    `,
+              translateX(${offset * 60}%)
+              translateX(-50%)
+              scale(${index === current ? 1.1 : 0.9})
+            `,
                     zIndex: index === current ? 50 : 20,
                   }}
                 />
@@ -102,10 +116,12 @@ const ProjectDetails = () => {
 
         </div>
 
+
+
         <div className='flex items-center justify-between gap-2 w-full mt-5 px-4'>
-          <button className='w-full rounded-md border-blue-500 border-2 text-blue-500 bg-white text-xl poppins px-2 py-1'>
+          <Link to='/siteengg' className='text-center w-full rounded-md border-blue-500 border-2 text-blue-500 bg-white text-xl poppins px-2 py-1'>
             Submit DPR
-          </button>
+          </Link>
 
           <button className='w-full rounded-md bg-blue-500 text-white border-2 border-blue-500 text-xl poppins px-2 py-1'>
             Request Materials

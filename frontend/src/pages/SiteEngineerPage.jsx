@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { AlertCircle, CheckCircle, Upload, RefreshCw, Image as ImageIcon, X, PlayCircle, CheckCircle2, Clock } from 'lucide-react';
+import { AlertCircle, CheckCircle, Upload, RefreshCw, Image as ImageIcon, X, PlayCircle, CheckCircle2, Clock, Camera, FormIcon } from 'lucide-react';
+import Header from '../Components/Header'
 
 // --- INLINED CONSTANTS & UTILS ---
 const API_URL = 'http://localhost:3001';
@@ -22,7 +23,7 @@ const uploadChunkedData = async (payload, onProgress, apiUrl) => {
 
   for (let i = 0; i < totalChunks; i++) {
     const chunk = jsonString.slice(i * chunkSize, (i + 1) * chunkSize);
-    
+
     const response = await fetch(`${apiUrl}/upload-chunk`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -35,7 +36,7 @@ const uploadChunkedData = async (payload, onProgress, apiUrl) => {
     });
 
     if (!response.ok) {
-        throw new Error(`Upload failed at chunk ${i + 1}`);
+      throw new Error(`Upload failed at chunk ${i + 1}`);
     }
 
     onProgress(((i + 1) / totalChunks) * 100);
@@ -47,7 +48,7 @@ const uploadChunkedData = async (payload, onProgress, apiUrl) => {
 export default function SiteEngineerPage() {
   // Task State
   const [tasks, setTasks] = useState([]);
-  
+
   // Upload State
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -157,36 +158,41 @@ export default function SiteEngineerPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4 md:p-8">
-      <div className="max-w-2xl mx-auto bg-white rounded-xl shadow-lg p-6 md:p-8">
-        <h1 className="text-3xl font-bold text-indigo-900 mb-8 flex items-center gap-3">
-          <Upload className="w-8 h-8" />
-          Site Engineer
+    <div className="relative min-h-screen bg-gradient-to-br p-4 md:p-8">
+      <Header />
+      <div className="absolute inset-0 z-0 pointer-events-none">
+        <div className="absolute w-[100%] h-[730px] bg-[#4361ee] rounded-b-4xl"></div>
+      </div>
+
+      <div className="relative z-10 max-w-2xl mx-auto rounded-xl mt-15  p-6 md:p-8">
+        <h1 className="text-4xl staatliches_ns text-white gap-3 mt-5 flex items-center">
+          <FormIcon className='w-8 h-8'/>
+          DPR Form
         </h1>
 
-        <div className="space-y-8">
-          
+        <div className="space-y-8 mt-5">
+
           {/* Progress Section */}
           <div className="bg-indigo-50 p-6 rounded-xl border border-indigo-100">
             <div className="flex justify-between items-end mb-2">
-              <label className="text-sm font-bold text-indigo-900 uppercase tracking-wider">Project Completion</label>
-              <span className="text-3xl font-black text-indigo-600">{currentProgress}%</span>
+              <label className="text-sm font-bold text-[#4361ee] uppercase tracking-wider">Project Completion</label>
+              <span className="text-3xl font-black text-[#4361ee]">{currentProgress}%</span>
             </div>
-            <div className="w-full bg-indigo-200 rounded-full h-3 overflow-hidden">
-              <div 
-                className="bg-indigo-600 h-full transition-all duration-500 ease-out" 
-                style={{ width: `${currentProgress}%` }} 
+            <div className="w-full rounded-full h-3 overflow-hidden">
+              <div
+                className="bg-[#4361ee] h-full transition-all duration-500 ease-out"
+                style={{ width: `${currentProgress}%` }}
               />
             </div>
-            <p className="text-xs text-indigo-600 mt-2 text-right">
+            <p className="text-xs text-[#4361ee] mt-2 text-right">
               Based on {tasks.filter(t => t.status === 'completed').length} of {tasks.length} tasks
             </p>
           </div>
 
           {/* Task List */}
           <div>
-            <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-              <Clock className="w-5 h-5 text-indigo-600" />
+            <h3 className="text-3xl font-semibold text-white mb-4 flex items-center gap-2 staatliches_ns">
+              <Clock className="w-8 h-8 text-white" />
               Active Tasks
             </h3>
             <div className="space-y-3 max-h-80 overflow-y-auto pr-2">
@@ -203,10 +209,10 @@ export default function SiteEngineerPage() {
                         {task.status}
                       </span>
                     </div>
-                    
+
                     <div className="flex gap-2">
                       {task.status === 'pending' && (
-                        <button 
+                        <button
                           onClick={() => updateTaskStatus(task._id, 'in-progress')}
                           className="flex-1 flex items-center justify-center gap-1 px-3 py-2 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded transition"
                         >
@@ -214,7 +220,7 @@ export default function SiteEngineerPage() {
                         </button>
                       )}
                       {task.status === 'in-progress' && (
-                        <button 
+                        <button
                           onClick={() => updateTaskStatus(task._id, 'completed')}
                           className="flex-1 flex items-center justify-center gap-1 px-3 py-2 text-sm font-medium text-green-700 bg-green-50 hover:bg-green-100 rounded transition"
                         >
@@ -222,12 +228,12 @@ export default function SiteEngineerPage() {
                         </button>
                       )}
                       {task.status === 'completed' && (
-                         <button 
-                         onClick={() => updateTaskStatus(task._id, 'in-progress')}
-                         className="flex-1 flex items-center justify-center gap-1 px-3 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 transition"
-                       >
-                         Undo
-                       </button>
+                        <button
+                          onClick={() => updateTaskStatus(task._id, 'in-progress')}
+                          className="flex-1 flex items-center justify-center gap-1 px-3 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 transition"
+                        >
+                          Undo
+                        </button>
                       )}
                     </div>
                   </div>
@@ -237,8 +243,8 @@ export default function SiteEngineerPage() {
           </div>
 
           {/* Image Upload */}
-          <div className="border-t pt-6">
-            <label className="block text-sm font-medium text-gray-700 mb-3">Site Photo (Optional)</label>
+          <div className="pt-6">
+            <label className="font-medium text-[#4361ee] staatliches_ns text-3xl flex items-center gap-2"><Camera className='w-8 h-8'/>Site Photo (Optional)</label>
 
             {!selectedImage ? (
               <div onClick={() => fileInputRef.current?.click()} className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center cursor-pointer hover:border-indigo-500 hover:bg-indigo-50 transition group">
@@ -261,7 +267,7 @@ export default function SiteEngineerPage() {
             <input type="file" ref={fileInputRef} onChange={handleImageSelect} accept="image/*" className="hidden" />
           </div>
 
-          <button onClick={handleUpload} disabled={uploading} className="w-full px-6 py-4 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center justify-center gap-2 shadow-md hover:shadow-lg transform active:scale-[0.99]">
+          <button onClick={handleUpload} disabled={uploading} className="w-full px-6 py-4 bg-[#4361ee] text-white rounded-xl font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center justify-center gap-2 shadow-md hover:shadow-lg transform active:scale-[0.99]">
             {uploading ? (
               <>
                 <RefreshCw className="w-5 h-5 animate-spin" />
