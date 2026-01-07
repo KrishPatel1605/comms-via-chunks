@@ -3,42 +3,32 @@ const router = express.Router();
 const cloudinary = require('../config/cloudinary');
 const SiteUpdate = require('../models/SiteUpdate');
 const Task = require('../models/Task');
+const MaterialRequest = require('../models/MaterialRequest'); // New Model
 const { storeChunk, reconstructJSON, getUploadStatus, deleteUpload } = require('../utils/chunkStorage');
 
-// --- Existing Upload Logic ---
+// --- Site Photo & Progress Logic ---
 
-// POST /upload-chunk
 router.post('/upload-chunk', async (req, res) => {
   const { uploadId, chunkIndex, totalChunks, payload } = req.body;
-
   if (!uploadId || chunkIndex === undefined || payload === undefined) {
     return res.status(400).json({ error: 'Invalid payload' });
   }
-
-  console.log(`Packet ${chunkIndex}/${totalChunks - 1} for ${uploadId}`);
 
   try {
     const status = storeChunk(uploadId, chunkIndex, payload, totalChunks);
 
     if (status.complete) {
-      console.log(`Upload ${uploadId} complete. Reconstructing...`);
       let reconstructedData = reconstructJSON(uploadId);
       let finalImageUrl = null;
 
       if (reconstructedData.imageBase64) {
-        console.log('Uploading image to Cloudinary...');
         try {
-          if (!process.env.CLOUDINARY_CLOUD_NAME) throw new Error('Cloudinary config missing');
-
           const uploadResponse = await cloudinary.uploader.upload(reconstructedData.imageBase64, {
             folder: 'site_engineer_updates',
             resource_type: 'auto'
           });
-
           finalImageUrl = uploadResponse.secure_url;
-          console.log(`Image uploaded: ${finalImageUrl}`);
         } catch (cloudError) {
-          console.warn(`Cloudinary failed, using Base64 fallback: ${cloudError.message}`);
           finalImageUrl = reconstructedData.imageBase64;
         }
       }
@@ -47,60 +37,34 @@ router.post('/upload-chunk', async (req, res) => {
         sliderValue: reconstructedData.sliderValue,
         imageUrl: finalImageUrl,
         source: reconstructedData.source || 'site_engineer',
-        uploadId: uploadId,
-        createdAt: new Date()
+        uploadId: uploadId
       });
 
       await newUpdate.save();
-      console.log('Document saved to MongoDB');
-
       deleteUpload(uploadId);
-
-      return res.json({ success: true, message: 'Data saved to MongoDB', complete: true });
+      return res.json({ success: true, complete: true });
     }
-
-    res.json({ success: true, message: 'Chunk received', complete: false });
+    res.json({ success: true, complete: false });
   } catch (error) {
-    console.error('Error processing chunk:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// GET /upload-status
-router.get('/upload-status', (req, res) => {
-  const { uploadId } = req.query;
-  const receivedChunks = getUploadStatus(uploadId);
-  res.json({ receivedChunks, totalChunks: receivedChunks.length ? undefined : 0 });
-});
-
-// GET /latest-value
 router.get('/latest-value', async (req, res) => {
   try {
     const latest = await SiteUpdate.findOne().sort({ createdAt: -1 });
-    if (latest) {
-      res.json({ sliderValue: latest.sliderValue, timestamp: latest.createdAt, imageUrl: latest.imageUrl, source: latest.source });
-    } else {
-      res.json({});
-    }
+    res.json(latest ? {
+      sliderValue: latest.sliderValue,
+      timestamp: latest.createdAt,
+      imageUrl: latest.imageUrl
+    } : {});
   } catch (error) {
-    console.error('Database Error:', error);
     res.status(500).json({ error: 'Failed to fetch data' });
   }
 });
 
-// GET /history
-router.get('/history', async (req, res) => {
-  try {
-    const history = await SiteUpdate.find().sort({ createdAt: -1 }).limit(10);
-    res.json(history);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+// --- Task Management Routes ---
 
-// --- New Task Management Routes ---
-
-// GET /tasks - Fetch all tasks
 router.get('/tasks', async (req, res) => {
   try {
     const tasks = await Task.find().sort({ createdAt: -1 });
@@ -110,7 +74,6 @@ router.get('/tasks', async (req, res) => {
   }
 });
 
-// POST /tasks - Create a new task
 router.post('/tasks', async (req, res) => {
   try {
     if (!req.body.description) return res.status(400).json({ error: 'Description required' });
@@ -122,19 +85,49 @@ router.post('/tasks', async (req, res) => {
   }
 });
 
-// PATCH /tasks/:id - Update task status
 router.patch('/tasks/:id', async (req, res) => {
   try {
+    const task = await Task.findByIdAndUpdate(req.params.id, { status: req.body.status }, { new: true });
+    res.json(task);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// --- Material Requisition Routes (New) ---
+
+// Fetch all material requests
+router.get('/materials', async (req, res) => {
+  try {
+    const requests = await MaterialRequest.find().sort({ createdAt: -1 });
+    res.json(requests);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Create a new material request (Used by Site Engineer)
+router.post('/materials', async (req, res) => {
+  try {
+    const { name, qty } = req.body;
+    if (!name || !qty) return res.status(400).json({ error: 'Name and Qty required' });
+    const request = new MaterialRequest({ name, qty });
+    await request.save();
+    res.json(request);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update material status (Approved/Rejected - Used by Admin)
+router.patch('/materials/:id', async (req, res) => {
+  try {
     const { status } = req.body;
-    if (!['pending', 'in-progress', 'completed'].includes(status)) {
+    if (!['approved', 'rejected', 'pending'].includes(status)) {
       return res.status(400).json({ error: 'Invalid status' });
     }
-    const task = await Task.findByIdAndUpdate(
-      req.params.id, 
-      { status }, 
-      { new: true }
-    );
-    res.json(task);
+    const request = await MaterialRequest.findByIdAndUpdate(req.params.id, { status }, { new: true });
+    res.json(request);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

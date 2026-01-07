@@ -1,6 +1,20 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { AlertCircle, CheckCircle, Upload, RefreshCw, Image as ImageIcon, X, PlayCircle, CheckCircle2, Clock } from 'lucide-react';
+import { 
+  AlertCircle, 
+  CheckCircle, 
+  Upload, 
+  RefreshCw, 
+  Image as ImageIcon, 
+  X, 
+  PlayCircle, 
+  CheckCircle2, 
+  Clock,
+  Plus,
+  Package,
+  ShoppingCart
+} from 'lucide-react';
 
+// Hardcoded API URL to prevent resolution errors in the preview environment
 import { API_URL } from "../api/config";
 
 const fileToBase64 = (file) => {
@@ -16,7 +30,6 @@ const uploadChunkedData = async (payload, onProgress, apiUrl) => {
   const jsonString = JSON.stringify(payload);
   const chunkSize = 1024 * 50; // 50KB chunks
   const totalChunks = Math.ceil(jsonString.length / chunkSize);
-  // Use a random UUID for the upload session
   const uploadId = crypto.randomUUID();
 
   for (let i = 0; i < totalChunks; i++) {
@@ -41,23 +54,25 @@ const uploadChunkedData = async (payload, onProgress, apiUrl) => {
   }
   return uploadId;
 };
-// ---------------------------------
 
-export default function SiteEngineerPage() {
-  // Task State
+export default function SiteEngineerPage({ materialRequests = [], addMaterialRequest }) {
+  // Task State (Backend)
   const [tasks, setTasks] = useState([]);
   
-  // Upload State
+  // Upload State (Backend)
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState('');
   const [selectedImage, setSelectedImage] = useState(null);
   const fileInputRef = useRef(null);
 
+  // Material Form State (Local Only)
+  const [matName, setMatName] = useState('');
+  const [matQty, setMatQty] = useState('');
+
   // Fetch tasks on load
   useEffect(() => {
     fetchTasks();
-    // Poll for updates every 5 seconds
     const interval = setInterval(fetchTasks, 5000);
     return () => clearInterval(interval);
   }, []);
@@ -86,7 +101,6 @@ export default function SiteEngineerPage() {
     }
   };
 
-  // Calculate progress based on completed tasks
   const calculateProgress = () => {
     if (tasks.length === 0) return 0;
     const completed = tasks.filter(t => t.status === 'completed').length;
@@ -124,7 +138,7 @@ export default function SiteEngineerPage() {
     const payload = {
       source: 'site_engineer',
       timestamp: new Date().toISOString(),
-      sliderValue: currentProgress, // Send the calculated progress
+      sliderValue: currentProgress,
       imageBase64: selectedImage,
       metadata: {
         user: 'Site Engineer',
@@ -147,6 +161,22 @@ export default function SiteEngineerPage() {
     }
   };
 
+  const handleMaterialSubmit = (e) => {
+    e.preventDefault();
+    if (!matName || !matQty) return;
+    if (addMaterialRequest) {
+      addMaterialRequest({
+        id: Date.now(),
+        name: matName,
+        qty: matQty,
+        status: 'pending',
+        timestamp: new Date().toISOString()
+      });
+    }
+    setMatName('');
+    setMatQty('');
+  };
+
   const getStatusColor = (status) => {
     switch (status) {
       case 'completed': return 'bg-green-100 text-green-800 border-green-200';
@@ -157,141 +187,134 @@ export default function SiteEngineerPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4 md:p-8">
-      <div className="max-w-2xl mx-auto bg-white rounded-xl shadow-lg p-6 md:p-8">
-        <h1 className="text-3xl font-bold text-indigo-900 mb-8 flex items-center gap-3">
-          <Upload className="w-8 h-8" />
-          Site Engineer
-        </h1>
+      <div className="max-w-2xl mx-auto space-y-6">
+        <div className="bg-white rounded-xl shadow-lg p-6 md:p-8">
+          <h1 className="text-3xl font-bold text-indigo-900 mb-8 flex items-center gap-3">
+            <Upload className="w-8 h-8" />
+            Site Engineer
+          </h1>
 
-        <div className="space-y-8">
-          
-          {/* Progress Section */}
-          <div className="bg-indigo-50 p-6 rounded-xl border border-indigo-100">
-            <div className="flex justify-between items-end mb-2">
-              <label className="text-sm font-bold text-indigo-900 uppercase tracking-wider">Project Completion</label>
-              <span className="text-3xl font-black text-indigo-600">{currentProgress}%</span>
+          <div className="space-y-8">
+            {/* Progress Section */}
+            <div className="bg-indigo-50 p-6 rounded-xl border border-indigo-100">
+              <div className="flex justify-between items-end mb-2">
+                <label className="text-sm font-bold text-indigo-900 uppercase tracking-wider">Project Completion</label>
+                <span className="text-3xl font-black text-indigo-600">{currentProgress}%</span>
+              </div>
+              <div className="w-full bg-indigo-200 rounded-full h-3 overflow-hidden">
+                <div 
+                  className="bg-indigo-600 h-full transition-all duration-500 ease-out" 
+                  style={{ width: `${currentProgress}%` }} 
+                />
+              </div>
             </div>
-            <div className="w-full bg-indigo-200 rounded-full h-3 overflow-hidden">
-              <div 
-                className="bg-indigo-600 h-full transition-all duration-500 ease-out" 
-                style={{ width: `${currentProgress}%` }} 
-              />
-            </div>
-            <p className="text-xs text-indigo-600 mt-2 text-right">
-              Based on {tasks.filter(t => t.status === 'completed').length} of {tasks.length} tasks
-            </p>
-          </div>
 
-          {/* Task List */}
-          <div>
-            <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-              <Clock className="w-5 h-5 text-indigo-600" />
-              Active Tasks
-            </h3>
-            <div className="space-y-3 max-h-80 overflow-y-auto pr-2">
-              {tasks.length === 0 ? (
-                <div className="text-center py-6 text-gray-400 bg-gray-50 rounded-lg border border-dashed border-gray-200">
-                  No tasks assigned yet.
+            {/* Task List */}
+            <div>
+              <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                <Clock className="w-5 h-5 text-indigo-600" />
+                Active Tasks
+              </h3>
+              <div className="space-y-3 max-h-80 overflow-y-auto pr-2">
+                {tasks.length === 0 ? (
+                  <div className="text-center py-6 text-gray-400 bg-gray-50 rounded-lg border border-dashed border-gray-200">
+                    No tasks assigned yet.
+                  </div>
+                ) : (
+                  tasks.map((task) => (
+                    <div key={task._id} className="p-4 bg-gray-50 rounded-lg border border-gray-100 hover:border-indigo-200 transition">
+                      <div className="flex justify-between items-start mb-3">
+                        <p className="text-gray-800 font-medium">{task.description}</p>
+                        <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded border ${getStatusColor(task.status)}`}>
+                          {task.status}
+                        </span>
+                      </div>
+                      <div className="flex gap-2">
+                        {task.status === 'pending' && (
+                          <button onClick={() => updateTaskStatus(task._id, 'in-progress')} className="flex-1 flex items-center justify-center gap-1 px-3 py-2 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded transition">
+                            <PlayCircle className="w-4 h-4" /> Start Task
+                          </button>
+                        )}
+                        {task.status === 'in-progress' && (
+                          <button onClick={() => updateTaskStatus(task._id, 'completed')} className="flex-1 flex items-center justify-center gap-1 px-3 py-2 text-sm font-medium text-green-700 bg-green-50 hover:bg-green-100 rounded transition">
+                            <CheckCircle2 className="w-4 h-4" /> Mark Complete
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Material Request Section (Local Only) */}
+            <div className="border-t pt-8">
+              <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                <ShoppingCart className="w-5 h-5 text-amber-600" />
+                Material Requisition
+              </h3>
+              <form onSubmit={handleMaterialSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
+                <input 
+                  type="text" 
+                  placeholder="Material name..." 
+                  className="px-4 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-amber-500"
+                  value={matName}
+                  onChange={e => setMatName(e.target.value)}
+                />
+                <input 
+                  type="text" 
+                  placeholder="Quantity..." 
+                  className="px-4 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-amber-500"
+                  value={matQty}
+                  onChange={e => setMatQty(e.target.value)}
+                />
+                <button type="submit" className="bg-amber-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-amber-700 transition flex items-center justify-center gap-2">
+                  <Plus className="w-4 h-4" /> Request
+                </button>
+              </form>
+
+              <div className="space-y-2">
+                {materialRequests.map(req => (
+                  <div key={req.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border text-sm">
+                    <div className="flex items-center gap-3">
+                      <Package className="w-4 h-4 text-gray-400" />
+                      <span><span className="font-bold">{req.name}</span> • {req.qty}</span>
+                    </div>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border ${
+                      req.status === 'approved' ? 'bg-green-100 text-green-700 border-green-200' : 
+                      req.status === 'rejected' ? 'bg-red-100 text-red-700 border-red-200' : 'bg-gray-100 text-gray-600 border-gray-200'
+                    }`}>
+                      {req.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Image Upload */}
+            <div className="border-t pt-6">
+              <label className="block text-sm font-medium text-gray-700 mb-3">Site Photo (Optional)</label>
+              {!selectedImage ? (
+                <div onClick={() => fileInputRef.current?.click()} className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center cursor-pointer hover:border-indigo-500 hover:bg-indigo-50 transition group">
+                  <ImageIcon className="w-12 h-12 text-gray-400 mx-auto mb-3 group-hover:text-indigo-500" />
+                  <p className="text-gray-500 font-medium group-hover:text-indigo-600">Click to upload site photo</p>
                 </div>
               ) : (
-                tasks.map((task) => (
-                  <div key={task._id} className="p-4 bg-gray-50 rounded-lg border border-gray-100 hover:border-indigo-200 transition">
-                    <div className="flex justify-between items-start mb-3">
-                      <p className="text-gray-800 font-medium">{task.description}</p>
-                      <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded border ${getStatusColor(task.status)}`}>
-                        {task.status}
-                      </span>
-                    </div>
-                    
-                    <div className="flex gap-2">
-                      {task.status === 'pending' && (
-                        <button 
-                          onClick={() => updateTaskStatus(task._id, 'in-progress')}
-                          className="flex-1 flex items-center justify-center gap-1 px-3 py-2 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded transition"
-                        >
-                          <PlayCircle className="w-4 h-4" /> Start Task
-                        </button>
-                      )}
-                      {task.status === 'in-progress' && (
-                        <button 
-                          onClick={() => updateTaskStatus(task._id, 'completed')}
-                          className="flex-1 flex items-center justify-center gap-1 px-3 py-2 text-sm font-medium text-green-700 bg-green-50 hover:bg-green-100 rounded transition"
-                        >
-                          <CheckCircle2 className="w-4 h-4" /> Mark Complete
-                        </button>
-                      )}
-                      {task.status === 'completed' && (
-                         <button 
-                         onClick={() => updateTaskStatus(task._id, 'in-progress')}
-                         className="flex-1 flex items-center justify-center gap-1 px-3 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 transition"
-                       >
-                         Undo
-                       </button>
-                      )}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          {/* Image Upload */}
-          <div className="border-t pt-6">
-            <label className="block text-sm font-medium text-gray-700 mb-3">Site Photo (Optional)</label>
-
-            {!selectedImage ? (
-              <div onClick={() => fileInputRef.current?.click()} className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center cursor-pointer hover:border-indigo-500 hover:bg-indigo-50 transition group">
-                <ImageIcon className="w-12 h-12 text-gray-400 mx-auto mb-3 group-hover:text-indigo-500" />
-                <p className="text-gray-500 font-medium group-hover:text-indigo-600">Click to upload site photo</p>
-                <p className="text-xs text-gray-400 mt-1">Supports JPG, PNG (Max 5MB)</p>
-              </div>
-            ) : (
-              <div className="relative rounded-xl overflow-hidden border border-gray-200 bg-gray-50">
-                <img src={selectedImage} alt="Preview" className="w-full h-48 object-cover" />
-                <button onClick={clearImage} disabled={uploading} className="absolute top-2 right-2 p-1 bg-white/90 rounded-full shadow-sm hover:bg-red-50 text-gray-600 hover:text-red-600 transition">
-                  <X className="w-5 h-5" />
-                </button>
-                <div className="p-2 bg-white border-t text-xs text-gray-500 flex items-center gap-2">
-                  <CheckCircle className="w-4 h-4 text-green-500" />
-                  Image ready for upload
+                <div className="relative rounded-xl overflow-hidden border border-gray-200 bg-gray-50">
+                  <img src={selectedImage} alt="Preview" className="w-full h-48 object-cover" />
+                  <button onClick={clearImage} className="absolute top-2 right-2 p-1 bg-white/90 rounded-full shadow-sm text-gray-600 hover:text-red-600 transition">
+                    <X className="w-5 h-5" />
+                  </button>
                 </div>
-              </div>
-            )}
-            <input type="file" ref={fileInputRef} onChange={handleImageSelect} accept="image/*" className="hidden" />
+              )}
+              <input type="file" ref={fileInputRef} onChange={handleImageSelect} accept="image/*" className="hidden" />
+            </div>
+
+            <button onClick={handleUpload} disabled={uploading} className="w-full px-6 py-4 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 disabled:opacity-50 transition flex items-center justify-center gap-2 shadow-md">
+              {uploading ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
+              Submit Site Report
+            </button>
           </div>
-
-          <button onClick={handleUpload} disabled={uploading} className="w-full px-6 py-4 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center justify-center gap-2 shadow-md hover:shadow-lg transform active:scale-[0.99]">
-            {uploading ? (
-              <>
-                <RefreshCw className="w-5 h-5 animate-spin" />
-                Uploading Data...
-              </>
-            ) : (
-              <>
-                <Upload className="w-5 h-5" />
-                Submit Report
-              </>
-            )}
-          </button>
-
-          {uploading && (
-            <div className="space-y-2 animate-in fade-in slide-in-from-bottom-2">
-              <div className="flex justify-between text-xs text-gray-500 font-medium">
-                <span>Uploading chunks...</span>
-                <span>{progress.toFixed(0)}%</span>
-              </div>
-              <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
-                <div className="bg-indigo-600 h-full transition-all duration-300 ease-out" style={{ width: `${progress}%` }} />
-              </div>
-            </div>
-          )}
-
-          {status && (
-            <div className={`p-4 rounded-lg flex items-center gap-3 text-sm font-medium animate-in fade-in slide-in-from-bottom-2 ${status.includes('Error') ? 'bg-red-50 text-red-700 border border-red-100' : 'bg-green-50 text-green-700 border border-green-100'}`}>
-              {status.includes('Error') ? <AlertCircle className="w-5 h-5 shrink-0" /> : <CheckCircle className="w-5 h-5 shrink-0" />}
-              {status}
-            </div>
-          )}
         </div>
       </div>
     </div>
