@@ -56,7 +56,12 @@ const Signup = () => {
   };
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center">
+    <div className="min-h-screen w-full flex flex-col items-center justify-center">
+
+      <div className="text-5xl flex items-center justify-center gap-3 mt-4 mb-5 w-full staatliches text-[#4361ee]">
+        <img src="/public/logo/nirmaan2.png" className="w-10 h-10 scale-125" />
+        <div>Nirmaan</div>
+      </div>
 
       <div className="flex flex-col items-center gap-2 shadow-2xl shadow-gray-300 rounded-2xl w-[90%] h-full bg-[#4361ee] py-6 px-4">
         <div className="text-3xl text-white staatliches_ns">Create An Account On Nirmaan</div>

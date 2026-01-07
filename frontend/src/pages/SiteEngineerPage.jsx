@@ -271,7 +271,7 @@ export default function SiteEngineerPage() {
           <div className="pt-6 flex flex-col">
             <label className="font-medium text-[#4361ee] staatliches_ns text-3xl flex items-center gap-2"><Camera className='w-8 h-8' />Mark Attendence</label>
             <div className='mt-4 flex flex-col items-center'>
-              <Link className='bg-white border-2 border-[#4361ee] rounded-lg px-2 py-2 text-2xl poppins text-center flex items-center justify-center gap-2 text-[#4361ee] w-[80%]'>
+              <Link to='/map' className='bg-white border-2 border-[#4361ee] rounded-lg px-2 py-2 text-2xl poppins text-center flex items-center justify-center gap-2 text-[#4361ee] w-[80%]'>
                 <MapPin className='w-7 h-7'/>
                 Visit Site Map
               </Link>
