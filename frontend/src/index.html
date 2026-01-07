@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Client-Server Data Transmission</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            background-color: #f0f4f8;
+        }
+
+        /* Animation Container */
+        #scene {
+            position: relative;
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            overflow: hidden;
+        }
+
+        /* Sides */
+        .side {
+            flex: 1;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            padding-top: 2rem;
+            position: relative;
+        }
+
+        .client-side {
+            background-color: #e0e7ff; /* Light Indigo */
+            border-right: 2px dashed #a5b4fc;
+        }
+
+        .server-side {
+            background-color: #dcfce7; /* Light Green */
+        }
+
+        .label {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #374151;
+            margin-bottom: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        /* Boxes */
+        .box {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            position: absolute;
+            transition: all 0.5s cubic-bezier(0.25, 1, 0.5, 1);
+        }
+
+        .data-box {
+            width: 120px;
+            height: 120px;
+            background-color: #4f46e5; /* Indigo 600 */
+            z-index: 10;
+            font-size: 1.25rem;
+        }
+
+        .packet {
+            width: 50px;
+            height: 50px;
+            background-color: #f97316; /* Orange 500 */
+            font-size: 1rem;
+            z-index: 20;
+            opacity: 0; 
+            /* Start hidden */
+        }
+
+        /* Controls */
+        #controls {
+            position: absolute;
+            bottom: 2rem;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+        }
+
+        button {
+            background-color: #1f2937;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s;
+            border: none;
+        }
+
+        button:hover {
+            background-color: #374151;
+        }
+
+        button:disabled {
+            background-color: #9ca3af;
+            cursor: not-allowed;
+        }
+        
+        /* Status Text */
+        #status {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            color: #666;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            z-index: 5;
+            transition: opacity 0.3s;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="scene">
+        <!-- Client Side -->
+        <div class="side client-side">
+            <div class="label">Client</div>
+        </div>
+
+        <!-- Server Side -->
+        <div class="side server-side">
+            <div class="label">Server</div>
+        </div>
+        
+        <div id="status">Ready to send</div>
+
+        <!-- Animation Elements (Absolute positioned relative to #scene) -->
+        <div id="client-data" class="box data-box">Data</div>
+        
+        <!-- Reassembled Data on Server -->
+        <div id="server-data" class="box data-box" style="opacity: 0; background-color: #16a34a;">Data</div>
+
+        <!-- Packets -->
+        <div id="p1" class="box packet">1</div>
+        <div id="p2" class="box packet">2</div>
+        <div id="p3" class="box packet">3</div>
+        <div id="p4" class="box packet">4</div>
+    </div>
+
+    <div id="controls">
+        <button id="start-btn" onclick="runAnimation()">Start Transmission</button>
+    </div>
+
+    <script>
+        const scene = document.getElementById('scene');
+        const clientData = document.getElementById('client-data');
+        const serverData = document.getElementById('server-data');
+        const packets = [
+            document.getElementById('p1'),
+            document.getElementById('p2'),
+            document.getElementById('p3'),
+            document.getElementById('p4')
+        ];
+        const statusEl = document.getElementById('status');
+        const startBtn = document.getElementById('start-btn');
+
+        let isAnimating = false;
+
+        // Configuration
+        const centerY = window.innerHeight / 2;
+        const clientX = window.innerWidth * 0.25; // Center of client side
+        const splitX = window.innerWidth * 0.35;  // Where split happens
+        const serverX = window.innerWidth * 0.75; // Center of server side
+        
+        function setInitialPositions() {
+            // Reset Data Boxes
+            clientData.style.transition = 'none';
+            clientData.style.opacity = '1';
+            clientData.style.left = (clientX - 60) + 'px'; // -60 is half width
+            clientData.style.top = (centerY - 60) + 'px';
+            clientData.style.transform = 'scale(1)';
+
+            serverData.style.transition = 'none';
+            serverData.style.opacity = '0';
+            serverData.style.left = (serverX - 60) + 'px';
+            serverData.style.top = (centerY - 60) + 'px';
+            serverData.style.transform = 'scale(0.8)';
+
+            // Reset Packets
+            packets.forEach(p => {
+                p.style.transition = 'none';
+                p.style.opacity = '0';
+                p.style.left = (clientX - 25) + 'px'; // Start exactly at client center
+                p.style.top = (centerY - 25) + 'px';
+            });
+            
+            statusEl.innerText = "Ready to send";
+        }
+
+        // Helper for delays
+        const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+        async function runAnimation() {
+            if (isAnimating) return;
+            isAnimating = true;
+            startBtn.disabled = true;
+
+            // Recalculate positions in case of resize
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            const startX = w * 0.20;
+            const splitPoint = w * 0.30;
+            const endX = w * 0.75;
+            const midY = h / 2;
+
+            setInitialPositions();
+            
+            // Force reflow
+            void clientData.offsetWidth; 
+
+            // Enable transitions
+            clientData.style.transition = 'all 0.8s ease-in-out';
+            serverData.style.transition = 'all 0.5s ease-out';
+            packets.forEach(p => p.style.transition = 'all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)');
+
+            // Step 1: Move Data to split point
+            statusEl.innerText = "Processing Data...";
+            clientData.style.left = (splitPoint - 60) + 'px';
+            
+            await wait(1000);
+
+            // Step 2: Split into packets
+            statusEl.innerText = "Segmenting...";
+            clientData.style.transform = 'scale(0)';
+            clientData.style.opacity = '0';
+
+            // Position packets in a grid at the split point
+            // Grid positions relative to center of the split point
+            const gap = 10;
+            const pSize = 50;
+            
+            // Top-Left, Top-Right, Bottom-Left, Bottom-Right relative offsets
+            const offsets = [
+                { x: -pSize/2 - gap/2, y: -pSize/2 - gap/2 },
+                { x: pSize/2 + gap/2, y: -pSize/2 - gap/2 },
+                { x: -pSize/2 - gap/2, y: pSize/2 + gap/2 },
+                { x: pSize/2 + gap/2, y: pSize/2 + gap/2 }
+            ];
+
+            packets.forEach((p, index) => {
+                p.style.opacity = '1';
+                // Initially they appear exactly where the big box was
+                p.style.left = (splitPoint - 25) + 'px'; 
+                p.style.top = (midY - 25) + 'px';
+                
+                // Then spread out immediately
+                setTimeout(() => {
+                    p.style.left = (splitPoint + offsets[index].x - 25) + 'px';
+                    p.style.top = (midY + offsets[index].y - 25) + 'px';
+                }, 50);
+            });
+
+            await wait(1000);
+
+            // Step 3: Send Packets one by one
+            statusEl.innerText = "Transmitting Packets...";
+            
+            for (let i = 0; i < packets.length; i++) {
+                const p = packets[i];
+                // Change transition for the travel part to be linear/smooth
+                p.style.transition = 'left 0.8s ease-in-out, top 0.8s ease-in-out, transform 0.3s';
+                p.style.zIndex = 30 + i; // Bring current to front
+                
+                // Move to Server Center
+                // We want them to stack slightly or just hit the center
+                p.style.left = (endX - 25) + 'px';
+                p.style.top = (midY - 25) + 'px'; // Center them
+                
+                // Add a small delay between launches
+                await wait(600);
+            }
+
+            // Wait for last packet to arrive fully
+            await wait(400);
+
+            // Step 4: Reassemble
+            statusEl.innerText = "Reassembling...";
+            
+            // Hide packets
+            packets.forEach(p => {
+                p.style.transition = 'all 0.3s';
+                p.style.transform = 'scale(0)';
+                p.style.opacity = '0';
+            });
+
+            // Show Server Data
+            serverData.style.opacity = '1';
+            serverData.style.transform = 'scale(1)';
+            
+            // Celebration effect
+            setTimeout(() => {
+                serverData.style.boxShadow = "0 0 20px #4ade80";
+            }, 300);
+
+            statusEl.innerText = "Transfer Complete";
+            startBtn.innerText = "Restart";
+            startBtn.disabled = false;
+            isAnimating = false;
+        }
+
+        // Initialize on load
+        window.onload = setInitialPositions;
+        window.onresize = () => {
+            if(!isAnimating) setInitialPositions();
+        };
+
+    </script>
+</body>
+</html>
