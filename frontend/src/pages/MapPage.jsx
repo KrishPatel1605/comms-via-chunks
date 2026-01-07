@@ -15,8 +15,103 @@ import {
   ChevronRight,
   User,
   Clock,
-  Timer
+  Timer,
+  UserCheck,
+  UserX,
+  Briefcase
 } from 'lucide-react';
+
+// --- PREDEFINED ZONES DATA with Workers ---
+const INITIAL_ZONES = [
+  {
+    id: 101,
+    name: "Site Alpha - Foundation",
+    date: "09:30 AM",
+    points: [
+      { lat: 19.0755, lng: 72.8760 },
+      { lat: 19.0775, lng: 72.8765 },
+      { lat: 19.0770, lng: 72.8790 },
+      { lat: 19.0750, lng: 72.8785 }
+    ],
+    workers: [
+      { 
+        id: 'w1', 
+        name: 'Rajesh Kumar', 
+        role: 'Foreman', 
+        status: 'Active', 
+        entry: '08:00 AM', 
+        exit: null,
+        location: { lat: 19.0765, lng: 72.8775 } 
+      },
+      { 
+        id: 'w2', 
+        name: 'Amit Patel', 
+        role: 'Civil Engineer', 
+        status: 'Completed', 
+        entry: '09:00 AM', 
+        exit: '02:00 PM',
+        location: { lat: 19.0760, lng: 72.8770 } // Last known loc
+      },
+      { 
+        id: 'w3', 
+        name: 'Vikram Singh', 
+        role: 'Laborer', 
+        status: 'Absent', 
+        entry: null, 
+        exit: null,
+        location: null 
+      },
+    ]
+  },
+  {
+    id: 102,
+    name: "Material Depot B",
+    date: "10:15 AM",
+    points: [
+      { lat: 19.0730, lng: 72.8730 },
+      { lat: 19.0745, lng: 72.8740 },
+      { lat: 19.0740, lng: 72.8760 }
+    ],
+    workers: [
+      { 
+        id: 'w4', 
+        name: 'Priya Sharma', 
+        role: 'Supervisor', 
+        status: 'Active', 
+        entry: '08:30 AM', 
+        exit: null,
+        location: { lat: 19.0738, lng: 72.8735 }
+      },
+      { 
+        id: 'w5', 
+        name: 'Rohan Gupta', 
+        role: 'Machine Operator', 
+        status: 'Active', 
+        entry: '08:45 AM', 
+        exit: null,
+        location: { lat: 19.0742, lng: 72.8745 }
+      },
+      { 
+        id: 'w6', 
+        name: 'Anjali Desai', 
+        role: 'Quality Control', 
+        status: 'Active', 
+        entry: '09:15 AM', 
+        exit: null,
+        location: { lat: 19.0735, lng: 72.8750 } 
+      },
+      { 
+        id: 'w7', 
+        name: 'Suresh Verma', 
+        role: 'Helper', 
+        status: 'Absent', 
+        entry: null, 
+        exit: null,
+        location: null 
+      },
+    ]
+  }
+];
 
 // --- Helper to get Tile URL for Preview ---
 const getTileUrl = (lat, lng, zoom) => {
@@ -94,8 +189,9 @@ const PolygonPreview = ({ points }) => {
 
 export default function MapPage() {
   const [isMapReady, setIsMapReady] = useState(false);
+  const [mapInitialized, setMapInitialized] = useState(false); // New state to track if map instance is created
   const [drawingMode, setDrawingMode] = useState(false);
-  const [polygons, setPolygons] = useState([]); 
+  const [polygons, setPolygons] = useState(INITIAL_ZONES); 
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   
   // Interaction & Editing
@@ -113,6 +209,7 @@ export default function MapPage() {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const polygonLayersRef = useRef({}); 
+  const workerLayerRef = useRef(null); // Ref for worker markers layer group
   const isDrawingRef = useRef(false);
   const currentPathRef = useRef([]);
   const tempPolylineRef = useRef(null);
@@ -143,7 +240,7 @@ export default function MapPage() {
       const L = window.L;
       const map = L.map(mapRef.current, {
         zoomControl: false 
-      }).setView([19.0760, 72.8777], 13);
+      }).setView([19.0760, 72.8777], 15); // Zoomed in a bit more for the predefined zones
 
       L.control.zoom({ position: 'bottomright' }).addTo(map);
 
@@ -153,6 +250,7 @@ export default function MapPage() {
       }).addTo(map);
 
       mapInstanceRef.current = map;
+      setMapInitialized(true); // Signal that map is ready for rendering layers
       
       tempPolylineRef.current = L.polyline([], {
         color: '#3b82f6',
@@ -217,7 +315,8 @@ export default function MapPage() {
           id: Date.now(),
           name: `Zone ${polygons.length + 1}`,
           points: closedShape,
-          date: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          date: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          workers: [] // New zones have no workers initially
         };
         setPolygons(prev => [...prev, newPoly]);
         setIsSidebarOpen(true);
@@ -244,16 +343,13 @@ export default function MapPage() {
       };
 
       // --- TOUCH HANDLERS (for Mobile) ---
-      // We attach these to the container to strictly control behavior (preventDefault)
       const handleTouchStart = (e) => {
-        if (e.touches.length !== 1) return; // Only allow single finger drawing
-        // Important: Prevent default to stop map scrolling/refreshing
+        if (e.touches.length !== 1) return;
         e.preventDefault(); 
         isDrawingRef.current = true;
 
         const touch = e.touches[0];
         const rect = container.getBoundingClientRect();
-        // Calculate LatLng relative to container
         const point = [touch.clientX - rect.left, touch.clientY - rect.top];
         const latlng = map.containerPointToLatLng(point);
 
@@ -263,7 +359,7 @@ export default function MapPage() {
 
       const handleTouchMove = (e) => {
         if (!isDrawingRef.current) return;
-        e.preventDefault(); // Stop scrolling while dragging
+        e.preventDefault();
 
         const touch = e.touches[0];
         const rect = container.getBoundingClientRect();
@@ -278,13 +374,10 @@ export default function MapPage() {
         finishShape();
       };
 
-      // Add Mouse Listeners (Leaflet API)
       map.on('mousedown', handleMouseDown);
       map.on('mousemove', handleMouseMove);
       map.on('mouseup', finishShape);
 
-      // Add Touch Listeners (Native DOM API for control)
-      // Passive: false is required to use preventDefault
       container.addEventListener('touchstart', handleTouchStart, { passive: false });
       container.addEventListener('touchmove', handleTouchMove, { passive: false });
       container.addEventListener('touchend', handleTouchEnd);
@@ -294,12 +387,10 @@ export default function MapPage() {
         map.dragging.enable();
         container.style.cursor = '';
         
-        // Clean up Mouse
         map.off('mousedown', handleMouseDown);
         map.off('mousemove', handleMouseMove);
         map.off('mouseup', finishShape);
         
-        // Clean up Touch
         container.removeEventListener('touchstart', handleTouchStart);
         container.removeEventListener('touchmove', handleTouchMove);
         container.removeEventListener('touchend', handleTouchEnd);
@@ -311,12 +402,13 @@ export default function MapPage() {
     }
   }, [drawingMode, isMapReady, polygons.length]);
 
-  // Render Polygons
+  // Render Polygons & WORKER MARKERS
   useEffect(() => {
     if (!mapInstanceRef.current) return;
     const map = mapInstanceRef.current;
     const L = window.L;
 
+    // --- 1. Polygons ---
     Object.values(polygonLayersRef.current).forEach(layer => map.removeLayer(layer));
     polygonLayersRef.current = {};
 
@@ -330,7 +422,15 @@ export default function MapPage() {
         className: 'animated-border' 
       }).addTo(map);
       
-      polygon.bindPopup(`<b>${poly.name}</b><br>Created: ${poly.date}`);
+      const activeWorkers = poly.workers ? poly.workers.filter(w => w.status === 'Active').length : 0;
+      
+      polygon.bindPopup(`
+        <div class="text-sm">
+          <b class="text-base text-gray-800">${poly.name}</b><br>
+          <span class="text-gray-500">Active Workers: </span><b>${activeWorkers}</b><br>
+          <span class="text-gray-400 text-xs">Created: ${poly.date}</span>
+        </div>
+      `);
       polygon.on('mouseover', () => { if (!editingId) setHoveredPolyId(poly.id); });
       polygon.on('mouseout', () => { if (!editingId) setHoveredPolyId(null); });
       
@@ -338,7 +438,55 @@ export default function MapPage() {
     });
 
     if (userLocation) evaluateUserInsideZone(userLocation, polygons);
-  }, [polygons, editingId]); 
+
+    // --- 2. Worker Markers ---
+    if (!workerLayerRef.current) {
+        workerLayerRef.current = L.layerGroup().addTo(map);
+    } else {
+        workerLayerRef.current.clearLayers();
+    }
+
+    polygons.forEach(poly => {
+        if (!poly.workers) return;
+        poly.workers.forEach(worker => {
+            if (worker.status === 'Active' && worker.location) {
+                // Custom Worker Icon
+                const workerIcon = L.divIcon({
+                    className: 'worker-marker-icon', // Just a hook class
+                    html: `
+                      <div class="relative group">
+                         <div class="absolute -inset-1 bg-blue-500/30 rounded-full blur-[2px]"></div>
+                         <div class="relative flex h-8 w-8 items-center justify-center bg-white rounded-full border-2 border-blue-500 shadow-lg transform transition-transform hover:scale-110">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                                <circle cx="12" cy="7" r="4"></circle>
+                            </svg>
+                         </div>
+                         <div class="absolute -bottom-1 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-t-[4px] border-t-blue-500"></div>
+                      </div>
+                    `,
+                    iconSize: [32, 32],
+                    iconAnchor: [16, 36], // Bottom tip center
+                    popupAnchor: [0, -36]
+                });
+
+                L.marker([worker.location.lat, worker.location.lng], { icon: workerIcon })
+                    .bindPopup(`
+                        <div class="text-center min-w-[120px]">
+                           <b class="text-gray-800 text-sm block mb-1">${worker.name}</b>
+                           <span class="text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100 font-medium">${worker.role}</span>
+                           <div class="mt-2 text-[10px] text-gray-400 flex items-center justify-center gap-1">
+                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                              Checked in: ${worker.entry}
+                           </div>
+                        </div>
+                    `)
+                    .addTo(workerLayerRef.current);
+            }
+        });
+    });
+
+  }, [polygons, editingId, mapInitialized]); // Re-run when polygons, editingId, or mapInitialized changes
 
   // --- Logic ---
 
@@ -401,7 +549,6 @@ export default function MapPage() {
     for (let poly of polygonsList) {
       if (isPointInPolygon(loc, poly.points)) {
         setInsideZoneId(poly.id);
-        // Auto-expand the zone if user is inside it for better visibility
         setExpandedZoneIds(prev => new Set(prev).add(poly.id));
         return;
       }
@@ -414,7 +561,7 @@ export default function MapPage() {
     evaluateUserInsideZone(userLocation, polygons);
   }, [userLocation]);
 
-  // --- MARKER LOGIC ---
+  // --- USER MARKER LOGIC ---
   useEffect(() => {
     if (!mapInstanceRef.current || !isMapReady) return;
     const L = window.L;
@@ -429,7 +576,7 @@ export default function MapPage() {
 
     // Custom Simple Marker (Pulsing Dot)
     const simpleIcon = L.divIcon({
-      className: 'custom-marker-container', // defined in styles below
+      className: 'custom-marker-container', 
       html: `
         <div class="relative flex h-4 w-4">
           <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
@@ -443,18 +590,12 @@ export default function MapPage() {
 
     const marker = L.marker([userLocation.lat, userLocation.lng], {
       icon: simpleIcon,
-      title: 'Site Engineer'
+      title: 'You'
     }).addTo(map);
 
-    marker.bindPopup(`<div class="text-xs font-bold text-gray-600">Site Engineer</div>`);
+    marker.bindPopup(`<div class="text-xs font-bold text-gray-600">You (Site Engineer)</div>`);
     userMarkerRef.current = marker;
     
-    // Optional: Auto-pan to user if inside zone
-    const layer = polygonLayersRef.current[insideZoneId];
-    if (layer) {
-       map.fitBounds(layer.getBounds(), { padding: [80, 80], maxZoom: 16 });
-    }
-
     return () => {
       if (userMarkerRef.current) {
         try { map.removeLayer(userMarkerRef.current); } catch(e) {}
@@ -508,8 +649,8 @@ export default function MapPage() {
       >
         <div className="p-5 border-b border-gray-100 bg-white flex justify-between items-center flex-shrink-0">
           <div>
-            <h2 className="font-bold text-gray-800 text-lg">Saved Areas</h2>
-            <p className="text-xs text-gray-400 font-medium">{polygons.length} areas defined</p>
+            <h2 className="font-bold text-gray-800 text-lg">Site Monitor</h2>
+            <p className="text-xs text-gray-400 font-medium">{polygons.length} Active Zones</p>
           </div>
           <div className="flex items-center gap-2">
             <button 
@@ -532,6 +673,8 @@ export default function MapPage() {
             polygons.map((poly) => {
               const isExpanded = expandedZoneIds.has(poly.id);
               const isEngineerInside = insideZoneId === poly.id;
+              // Safely handle if workers is undefined (e.g. user drawn polygon)
+              const workers = poly.workers || [];
 
               return (
                 <div 
@@ -542,7 +685,7 @@ export default function MapPage() {
                       : 'bg-white border-gray-100 hover:border-blue-200 hover:shadow-sm'
                   }`}
                 >
-                  {/* Card Header (Click to focus map, click chevron to expand) */}
+                  {/* Card Header */}
                   <div 
                     onClick={() => focusOnPolygon(poly.id)}
                     className="flex gap-3 p-3 cursor-pointer group"
@@ -577,7 +720,7 @@ export default function MapPage() {
                               {poly.name}
                             </h3>
                             {isEngineerInside && (
-                              <span className="flex h-2 w-2 relative">
+                              <span className="flex h-2 w-2 relative" title="You are here">
                                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
                                 <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
                               </span>
@@ -609,52 +752,90 @@ export default function MapPage() {
                         </div>
                       )}
                       
-                      <div className="flex items-center gap-1 mt-1 text-xs text-gray-400">
-                        <Calendar size={10} />
-                        <span>Created: {poly.date}</span>
+                      <div className="flex items-center gap-3 mt-1.5">
+                         <div className="flex items-center gap-1 text-xs text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded">
+                            <Briefcase size={10} />
+                            <span>{workers.length} Staff</span>
+                         </div>
+                         <div className="flex items-center gap-1 text-xs text-gray-400">
+                            <Calendar size={10} />
+                            <span>{poly.date}</span>
+                         </div>
                       </div>
                     </div>
                   </div>
 
-                  {/* Expanded Content (Accordion) */}
+                  {/* Expanded Content (Worker Log) */}
                   {isExpanded && (
-                    <div className="border-t border-gray-50 bg-gray-50/50 p-3 text-sm animate-in slide-in-from-top-1 duration-200">
-                      {isEngineerInside ? (
-                        <div className="space-y-3">
-                          <div className="flex items-center gap-3 text-green-700 bg-green-50 p-2 rounded-lg border border-green-100">
-                            <div className="bg-green-100 p-1.5 rounded-full">
-                               <User size={16} className="text-green-600" />
-                            </div>
-                            <div>
-                                <p className="font-semibold text-xs uppercase tracking-wide">Status</p>
-                                <p className="font-medium">1 On-site Engineer</p>
-                            </div>
+                    <div className="border-t border-gray-50 bg-gray-50/50 p-2 text-sm animate-in slide-in-from-top-1 duration-200">
+                      
+                      {/* Current User Indicator */}
+                      {isEngineerInside && (
+                        <div className="mb-3 bg-blue-50 border border-blue-100 rounded-lg p-2 flex items-center gap-3">
+                           <div className="bg-blue-100 p-1.5 rounded-full text-blue-600">
+                              <User size={16} />
+                           </div>
+                           <div className="flex-1">
+                              <p className="text-xs font-bold text-blue-800">YOU (Site Engineer)</p>
+                              <p className="text-[10px] text-blue-600">Just entered • Tracking Active</p>
+                           </div>
+                           <div className="h-2 w-2 bg-green-500 rounded-full animate-pulse"></div>
+                        </div>
+                      )}
+
+                      {/* Worker List */}
+                      {workers.length > 0 ? (
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-center text-[10px] font-bold text-gray-400 px-1 tracking-wider">
+                            <span>PERSONNEL</span>
+                            <span>STATUS</span>
                           </div>
                           
-                          <div className="flex items-center gap-3 text-gray-600 pl-1">
-                             <Clock size={16} className="text-gray-400" />
-                             <div>
-                                <p className="text-xs text-gray-400">Time Entered</p>
-                                <p className="font-mono text-xs font-medium bg-gray-100 px-2 py-0.5 rounded text-gray-700 inline-block mt-0.5">
-                                    {getEntryTime()}
-                                </p>
-                             </div>
-                          </div>
-
-                          <div className="flex items-center gap-3 text-gray-600 pl-1">
-                             <Timer size={16} className="text-gray-400" />
-                             <div>
-                                <p className="text-xs text-gray-400">Work Duration</p>
-                                <p className="font-mono text-xs font-bold bg-blue-50 text-blue-700 px-2 py-0.5 rounded inline-block mt-0.5">
-                                    30 min
-                                </p>
-                             </div>
-                          </div>
+                          {workers.map(worker => (
+                            <div key={worker.id} className="flex items-center justify-between p-2 bg-white rounded-lg border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
+                              <div className="flex items-center gap-3">
+                                <div className={`p-1.5 rounded-full flex-shrink-0 ${
+                                  worker.status === 'Active' ? 'bg-green-100 text-green-600' : 
+                                  worker.status === 'Absent' ? 'bg-red-100 text-red-600' : 
+                                  'bg-gray-100 text-gray-500'
+                                }`}>
+                                   {worker.status === 'Active' ? <UserCheck size={14} /> : 
+                                    worker.status === 'Absent' ? <UserX size={14} /> : 
+                                    <User size={14} />}
+                                </div>
+                                <div>
+                                  <p className="text-sm font-semibold text-gray-800 leading-tight">{worker.name}</p>
+                                  <p className="text-[10px] text-gray-500 font-medium">{worker.role}</p>
+                                </div>
+                              </div>
+                              
+                              <div className="text-right flex flex-col items-end">
+                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full mb-0.5 ${
+                                  worker.status === 'Active' ? 'bg-green-50 text-green-700 border border-green-100' : 
+                                  worker.status === 'Absent' ? 'bg-red-50 text-red-700 border border-red-100' : 
+                                  'bg-gray-100 text-gray-600 border border-gray-200'
+                                }`}>
+                                  {worker.status}
+                                </span>
+                                {worker.status !== 'Absent' && (
+                                   <div className="text-[9px] text-gray-400 flex items-center gap-1 font-mono">
+                                     <Clock size={8} />
+                                     {worker.status === 'Completed' ? 
+                                       <span>{worker.entry} - {worker.exit}</span> : 
+                                       <span>In: {worker.entry}</span>
+                                     }
+                                   </div>
+                                )}
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       ) : (
-                        <div className="flex flex-col items-center justify-center py-2 text-gray-400 gap-1">
-                           <p className="text-xs italic">No active personnel in this zone.</p>
-                        </div>
+                        !isEngineerInside && (
+                          <div className="text-center py-4 text-gray-400">
+                             <p className="text-xs italic">No personnel data available.</p>
+                          </div>
+                        )
                       )}
                     </div>
                   )}
